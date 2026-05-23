@@ -1,0 +1,213 @@
+{
+  "name": "infernal-chairs",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      },
+      "Events": {
+        "$className": "Folder",
+        "PlayMusic": { "$className": "RemoteEvent" },
+        "StopMusic": { "$className": "RemoteEvent" },
+        "StateChanged": { "$className": "RemoteEvent" },
+        "YouEliminated": { "$className": "RemoteEvent" }
+      }
+    },
+
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/client"
+        }
+      }
+    },
+
+    "Workspace": {
+      "$properties": {
+        "FilteringEnabled": true
+      },
+      "Baseplate": {
+        "$className": "Part",
+        "$properties": {
+          "Anchored": true,
+          "Color": [
+            0.38823,
+            0.37254,
+            0.38823
+          ],
+          "Locked": true,
+          "Position": [
+            0,
+            -10,
+            0
+          ],
+          "Size": [
+            512,
+            20,
+            512
+          ]
+        }
+      },
+      "SpawnPads": {
+        "$className": "Folder",
+        "Spawn1": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Anchored": true,
+            "Color": [0.6, 0.6, 0.65],
+            "Position": [25, 0.5, 0],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Spawn2": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Anchored": true,
+            "Color": [0.6, 0.6, 0.65],
+            "Position": [17.68, 0.5, 17.68],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Spawn3": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Anchored": true,
+            "Color": [0.6, 0.6, 0.65],
+            "Position": [0, 0.5, 25],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Spawn4": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Anchored": true,
+            "Color": [0.6, 0.6, 0.65],
+            "Position": [-17.68, 0.5, 17.68],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Spawn5": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Anchored": true,
+            "Color": [0.6, 0.6, 0.65],
+            "Position": [-25, 0.5, 0],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Spawn6": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Anchored": true,
+            "Color": [0.6, 0.6, 0.65],
+            "Position": [-17.68, 0.5, -17.68],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Spawn7": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Anchored": true,
+            "Color": [0.6, 0.6, 0.65],
+            "Position": [0, 0.5, -25],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Spawn8": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Anchored": true,
+            "Color": [0.6, 0.6, 0.65],
+            "Position": [17.68, 0.5, -17.68],
+            "Size": [4, 1, 4]
+          }
+        }
+      },
+      "Chairs": {
+        "$className": "Folder",
+        "Chair1": {
+          "$className": "Seat",
+          "$properties": {
+            "Anchored": true,
+            "CanCollide": false,
+            "Disabled": true,
+            "Transparency": 1,
+            "Color": [0.9, 0.1, 0.1],
+            "Position": [15, 1, 0],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Chair2": {
+          "$className": "Seat",
+          "$properties": {
+            "Anchored": true,
+            "CanCollide": false,
+            "Disabled": true,
+            "Transparency": 1,
+            "Color": [0.1, 0.4, 0.9],
+            "Position": [0, 1, 15],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Chair3": {
+          "$className": "Seat",
+          "$properties": {
+            "Anchored": true,
+            "CanCollide": false,
+            "Disabled": true,
+            "Transparency": 1,
+            "Color": [0.1, 0.8, 0.2],
+            "Position": [-15, 1, 0],
+            "Size": [4, 1, 4]
+          }
+        },
+        "Chair4": {
+          "$className": "Seat",
+          "$properties": {
+            "Anchored": true,
+            "CanCollide": false,
+            "Disabled": true,
+            "Transparency": 1,
+            "Color": [0.95, 0.85, 0.1],
+            "Position": [0, 1, -15],
+            "Size": [4, 1, 4]
+          }
+        }
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "Ambient": [
+          0,
+          0,
+          0
+        ],
+        "Brightness": 2,
+        "GlobalShadows": true,
+        "Outlines": false,
+        "Technology": "Voxel"
+      }
+    },
+    "SoundService": {
+      "$properties": {
+        "RespectFilteringEnabled": true
+      },
+      "Music": {
+        "$className": "Sound",
+        "$properties": {
+          "Looped": true,
+          "Volume": 0.85,
+          "SoundId": "rbxassetid://127798544476125"
+        }
+      }
+    }
+  }
+}

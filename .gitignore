@@ -1,0 +1,28 @@
+# Roblox place / model files (regenerated from default.project.json)
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+
+# Studio lock files
+*.rbxl.lock
+*.rbxlx.lock
+
+# Rojo build artifacts
+sourcemap.json
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE local state
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Local environment overrides
+.env
+.env.local
