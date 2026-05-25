@@ -87,7 +87,7 @@ Listo. Ahora cualquier cambio en `src/**/*.luau` o `default.project.json` se ref
 
 ## Cómo correr el juego (testing)
 
-Como mínimo requiere 2 jugadores (`MIN_PLAYERS = 2` en `src/server/init.server.luau`). Para probar tú solo:
+Como mínimo requiere 2 jugadores (`MIN_PLAYERS = 2` en `src/server/Config.luau`). Para probar tú solo:
 
 1. En Studio, ve a pestaña **Test**
 2. Modo **Start** → cambia `Players` a `2` (o más)
@@ -106,9 +106,12 @@ infernal-chairs/
 ├── README.md                   # este archivo
 ├── DEV_PLAN.md                 # roadmap detallado por fases
 ├── .gitignore
+├── assets/
+│   └── chair.rbxm              # modelo de silla del Marketplace (bundled, sin HTTP runtime)
 └── src/
     ├── server/
-    │   └── init.server.luau    # GameLoop server (state machine completo)
+    │   ├── init.server.luau    # GameLoop server (state machine completo + eventos)
+    │   └── Config.luau         # todas las constantes tunables (cadencia, geometría, eventos)
     ├── client/
     │   └── init.client.luau    # UI + audio playback (LocalScript per-cliente)
     └── shared/
