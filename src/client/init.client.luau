@@ -18,6 +18,7 @@ local PHASE_COLORS = {
 	Intermission = Color3.fromRGB(120, 220, 255),
 	Playing = Color3.fromRGB(120, 255, 140),
 	Stopped = Color3.fromRGB(255, 200, 60),
+	Judgement = Color3.fromRGB(255, 80, 80),
 	Winner = Color3.fromRGB(255, 215, 0),
 	Reset = Color3.fromRGB(200, 200, 200),
 }
@@ -66,6 +67,40 @@ subLabel.Font = Enum.Font.Gotham
 subLabel.Text = ""
 subLabel.Parent = bannerFrame
 
+local countdownFrame = Instance.new("Frame")
+countdownFrame.Size = UDim2.new(0, 130, 0, 110)
+countdownFrame.Position = UDim2.new(1, -150, 0, 25)
+countdownFrame.AnchorPoint = Vector2.new(0, 0)
+countdownFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+countdownFrame.BackgroundTransparency = 0.25
+countdownFrame.BorderSizePixel = 0
+countdownFrame.Visible = false
+countdownFrame.Parent = screenGui
+
+local countdownCorner = Instance.new("UICorner")
+countdownCorner.CornerRadius = UDim.new(0, 10)
+countdownCorner.Parent = countdownFrame
+
+local countdownCaption = Instance.new("TextLabel")
+countdownCaption.Size = UDim2.new(1, 0, 0.3, 0)
+countdownCaption.Position = UDim2.new(0, 0, 0, 6)
+countdownCaption.BackgroundTransparency = 1
+countdownCaption.TextColor3 = Color3.fromRGB(200, 200, 200)
+countdownCaption.TextScaled = true
+countdownCaption.Font = Enum.Font.Gotham
+countdownCaption.Text = ""
+countdownCaption.Parent = countdownFrame
+
+local countdownLabel = Instance.new("TextLabel")
+countdownLabel.Size = UDim2.new(1, 0, 0.65, 0)
+countdownLabel.Position = UDim2.new(0, 0, 0.3, 0)
+countdownLabel.BackgroundTransparency = 1
+countdownLabel.TextColor3 = Color3.fromRGB(120, 255, 140)
+countdownLabel.TextScaled = true
+countdownLabel.Font = Enum.Font.GothamBold
+countdownLabel.Text = ""
+countdownLabel.Parent = countdownFrame
+
 local overlay = Instance.new("Frame")
 overlay.Size = UDim2.new(1, 0, 1, 0)
 overlay.BackgroundColor3 = Color3.fromRGB(120, 0, 0)
@@ -96,10 +131,45 @@ StopMusic.OnClientEvent:Connect(function()
 	Music:Stop()
 end)
 
+local COUNTDOWN_PHASES = {
+	Stopped = { caption = "SIT NOW IN", color = Color3.fromRGB(255, 90, 90) },
+}
+
+local countdownToken = 0
+
+local function stopCountdown()
+	countdownToken += 1
+	countdownFrame.Visible = false
+end
+
+local function startCountdown(duration, caption, color)
+	countdownToken += 1
+	local myToken = countdownToken
+	countdownCaption.Text = caption
+	countdownLabel.TextColor3 = color
+	countdownFrame.Visible = true
+	local startedAt = os.clock()
+	while countdownToken == myToken do
+		local remaining = math.max(0, duration - (os.clock() - startedAt))
+		countdownLabel.Text = string.format("%.1fs", remaining)
+		if remaining <= 0 then
+			break
+		end
+		task.wait(0.05)
+	end
+end
+
 StateChanged.OnClientEvent:Connect(function(payload)
 	bannerLabel.Text = payload.message or ""
 	subLabel.Text = payload.sub or ""
 	bannerLabel.TextColor3 = PHASE_COLORS[payload.phase] or Color3.new(1, 1, 1)
+
+	local config = COUNTDOWN_PHASES[payload.phase]
+	if config and payload.duration then
+		task.spawn(startCountdown, payload.duration, config.caption, config.color)
+	else
+		stopCountdown()
+	end
 end)
 
 local overlayToken = 0
