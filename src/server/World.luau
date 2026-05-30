@@ -5,10 +5,9 @@
 --     The Parts live in the .rbxl; we just wire up the UI here because Rojo
 --     UDim2 serialization in JSON is painful.
 --   * Lobby ambient particles: subtle floating motes.
---   * Lobby decor (Workspace.Lobby.Decor): anchor pass so Marketplace welds
---     don't drop sub-parts at Play.
---
 -- Lobby shell + decor itself lives in the .rbxl, edited visually in Studio.
+-- Marketplace props must be pre-anchored in Studio (no runtime anchor pass)
+-- — otherwise legacy Welds drop sub-parts at Play.
 -- See ROBLOX_PLAYBOOK.md section 4 for the JSON vs code vs .rbxl decision matrix.
 
 local Workspace = game:GetService("Workspace")
@@ -54,7 +53,7 @@ local function buildArena()
 	end
 
 	-- Arena folder holds everything in the playing area: Shell (track, walls,
-	-- ceiling, lights, ring boundary) and Decor (DiscoBall, DjBooth, Speakers).
+	-- ceiling, lights, ring boundary) and Decor (DiscoBall + chairs).
 	-- The Folder is declared in default.project.json with $ignoreUnknownInstances,
 	-- so we just findOrCreate it here.
 	local arena = Workspace:FindFirstChild("Arena")
@@ -388,23 +387,6 @@ local function setupMatchStatusSign()
 	matchStatusValue = value
 end
 
-local function setupLobbyDecor()
-	-- Lobby decor (Marketplace furniture) lives in the .rbxl under
-	-- Workspace.Lobby.Decor. Anchor every BasePart defensively: many Marketplace
-	-- models use legacy Welds that can't hold sub-parts in place at Play —
-	-- without this pass they collapse "like Lego".
-	local lobby = Workspace:FindFirstChild("Lobby")
-	local decor = lobby and lobby:FindFirstChild("Decor")
-	if not decor then
-		return
-	end
-	for _, descendant in decor:GetDescendants() do
-		if descendant:IsA("BasePart") then
-			descendant.Anchored = true
-		end
-	end
-end
-
 local World = {}
 
 function World.build()
@@ -412,7 +394,6 @@ function World.build()
 	setupRulesSign()
 	setupLobbyAmbientParticles()
 	setupMatchStatusSign()
-	setupLobbyDecor()
 end
 
 function World.updateMatchStatus(text)
