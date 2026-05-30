@@ -12,10 +12,14 @@ local YouEliminated = Events:WaitForChild("YouEliminated")
 local Chairs = Workspace:WaitForChild("Chairs")
 
 local Config = require(script.Config)
+local World = require(script.World)
+local Decor = require(script.Decor)
+local Debris = game:GetService("Debris")
 
 -- Local aliases so the rest of the file stays readable (avoid Config.FOO repetition).
 -- Match cadence
 local MIN_PLAYERS = Config.MIN_PLAYERS
+local LOBBY_WARMUP_SECS = Config.LOBBY_WARMUP_SECS
 local INTERMISSION_SECS = Config.INTERMISSION_SECS
 local MUSIC_MIN_SECS = Config.MUSIC_MIN_SECS
 local MUSIC_MAX_SECS = Config.MUSIC_MAX_SECS
@@ -42,6 +46,17 @@ local SIT_PROMPT_DISTANCE = Config.SIT_PROMPT_DISTANCE
 local SPECTATOR_RING_OFFSET_MIN = Config.SPECTATOR_RING_OFFSET_MIN
 local SPECTATOR_RING_OFFSET_MAX = Config.SPECTATOR_RING_OFFSET_MAX
 local SPECTATOR_HEIGHT = Config.SPECTATOR_HEIGHT
+-- Audio / polish
+local MUSIC_TRACKS = Config.MUSIC_TRACKS
+local LOBBY_MUSIC_TRACKS = Config.LOBBY_MUSIC_TRACKS
+-- Debug
+local FORCE_EVENT = Config.FORCE_EVENT
+-- Arena geometry
+local ARENA_RADIUS = Config.ARENA_RADIUS
+local ARENA_WALL_HEIGHT = Config.ARENA_WALL_HEIGHT
+local ARENA_TRACK_RADIUS = Config.ARENA_TRACK_RADIUS
+local ARENA_PILLAR_RADIUS = Config.ARENA_PILLAR_RADIUS
+local ARENA_NEON_RADIUS = Config.ARENA_NEON_RADIUS
 -- Visual / event constants
 local DEFAULT_TRACK_COLOR = Config.DEFAULT_TRACK_COLOR
 local ICE_TRACK_COLOR = Config.ICE_TRACK_COLOR
@@ -61,21 +76,26 @@ local sitWelds = {}
 local sitListeners = {} -- per-player connections that re-seat them if Sit flips false
 local matchInProgress = false
 local activeEvent = nil
-local eventState = {}
-local walkSpeedOverride = nil
-local jumpDisabled = false -- when true, thaw() leaves jump kill-switched on
+local walkSpeedOverride = nil -- set by the events module (ice); read by thaw()
+local jumpDisabled = false -- set by the events module (ice); read by thaw()
 
 local function log(phase, message)
 	print(string.format("[GameLoop:%s] %s", phase, message))
 end
 
+local lastBroadcastEvent = nil
 local function broadcast(phase, message, sub, duration)
+	-- eventChanged tells the client to animate the banner when an event newly
+	-- appears (or disappears). cleared back to nil between matches in the reset path.
+	local eventChanged = activeEvent ~= lastBroadcastEvent
+	lastBroadcastEvent = activeEvent
 	StateChanged:FireAllClients({
 		phase = phase,
 		message = message,
 		sub = sub,
 		duration = duration,
 		event = activeEvent,
+		eventChanged = eventChanged,
 	})
 end
 
@@ -107,7 +127,7 @@ local function cloneChairsFromTemplate()
 	local templates = ReplicatedStorage:FindFirstChild("Templates")
 	local template = templates and templates:FindFirstChild("Chair")
 	if not template then
-		warn("[Chairs] ReplicatedStorage.Templates.Chair missing — check assets/chair.rbxm")
+		warn("[Chairs] ReplicatedStorage.Templates.Chair missing: check assets/chair.rbxm")
 		return false
 	end
 	print(
@@ -119,7 +139,7 @@ local function cloneChairsFromTemplate()
 		)
 	)
 	if not template:IsA("Model") then
-		warn(string.format("[Chairs] expected Model, got %s — fix assets/chair.rbxm", template.ClassName))
+		warn(string.format("[Chairs] expected Model, got %s: fix assets/chair.rbxm", template.ClassName))
 		return false
 	end
 
@@ -536,6 +556,22 @@ local function onCharacterAdded(player, character)
 	character:WaitForChild("HumanoidRootPart", 5)
 	if isSpectator(player) then
 		applySpectatorState(player)
+		return
+	end
+	-- if an active player dies mid-match (rare — happens on physics glitches
+	-- or external kills since freeze + lock should prevent normal deaths)
+	-- their new character spawns at the lobby with default speed. Re-apply
+	-- whatever state the current phase expects.
+	if matchInProgress and activePlayers[player] then
+		if orbitConnection then
+			-- mid-Playing: rejoin the orbit at the same angle they had before
+			local previousAngle = orbitState[player] and orbitState[player].angle or 0
+			freezeAndAssign(player, previousAngle)
+		else
+			-- post-Playing phases (Stopped/Judgement): apply the active event's
+			-- walkspeed override + jump lock via thaw().
+			thaw(player)
+		end
 	end
 end
 
@@ -580,220 +616,32 @@ for _, player in Players:GetPlayers() do
 	end)
 end
 
+World.build()
+Decor.build()
+
 cloneChairsFromTemplate()
 setupChairModels()
 setupChairPrompts()
 
 -- ===== Round events =====
--- Each event has optional hooks: onPlayingStart, onStoppedStart, onRoundEnd.
--- activeEvent is picked at the start of each round (rounds 2+). cleanup runs
--- onRoundEnd; do not leak state between rounds.
-
-local function getCenterPointLight()
-	local part = Workspace:FindFirstChild("Room") and Workspace.Room:FindFirstChild("CenterLight")
-	return part and part:FindFirstChildOfClass("PointLight")
-end
-
-local EVENTS = {
-	flickering = {
-		name = "FLICKERING LIGHTS",
-		onPlayingStart = function()
-			local light = getCenterPointLight()
-			if not light then
-				return
-			end
-			-- snapshot the ambient lighting state so we can swing the whole room
-			-- to near-pitch-black on the OFF cycle and restore on cleanup.
-			eventState.flickering = {
-				running = true,
-				origAmbient = Lighting.Ambient,
-				origOutdoorAmbient = Lighting.OutdoorAmbient,
-				origBrightness = Lighting.Brightness,
-			}
-			local state = eventState.flickering
-			task.spawn(function()
-				while state.running do
-					-- OFF: kill the point light AND drop room ambient to almost zero
-					light.Enabled = false
-					Lighting.Ambient = Color3.new(0, 0, 0)
-					Lighting.OutdoorAmbient = Color3.new(0, 0, 0)
-					Lighting.Brightness = 0
-					task.wait(2.5 + math.random() * 1) -- 2.5-3.5s OFF
-					if not state.running then
-						break
-					end
-					-- ON: restore everything
-					light.Enabled = true
-					Lighting.Ambient = state.origAmbient
-					Lighting.OutdoorAmbient = state.origOutdoorAmbient
-					Lighting.Brightness = state.origBrightness
-					task.wait(0.8 + math.random() * 0.4) -- 0.8-1.2s ON
-				end
-			end)
-		end,
-		onRoundEnd = function()
-			local state = eventState.flickering
-			if state then
-				state.running = false
-				Lighting.Ambient = state.origAmbient
-				Lighting.OutdoorAmbient = state.origOutdoorAmbient
-				Lighting.Brightness = state.origBrightness
-				eventState.flickering = nil
-			end
-			local light = getCenterPointLight()
-			if light then
-				light.Enabled = true
-			end
-		end,
-	},
-	ice = {
-		name = "ICE FLOOR",
-		-- Friction=0 + FrictionWeight=1000 gives effective friction ≈ 0.0003 against
-		-- the character — practically frictionless. Also disable jump so players
-		-- can't escape the slide, and raise WalkSpeed for more skidding momentum.
-		onPlayingStart = function()
-			local track = Workspace:FindFirstChild("Track")
-			if track then
-				track.Material = Enum.Material.Ice
-				track.Color = ICE_TRACK_COLOR
-				track.CustomPhysicalProperties = PhysicalProperties.new(0.919, 0, 0.15, 1000, 1)
-			end
-			walkSpeedOverride = ICE_WALK_SPEED
-			jumpDisabled = true
-		end,
-		onRoundEnd = function()
-			local track = Workspace:FindFirstChild("Track")
-			if track then
-				track.Material = Enum.Material.Plastic
-				track.Color = DEFAULT_TRACK_COLOR
-				track.CustomPhysicalProperties = nil
-			end
-			walkSpeedOverride = nil
-			jumpDisabled = false
-		end,
-	},
-	mud = {
-		name = "MUD FLOOR",
-		onPlayingStart = function()
-			local data = { patches = {}, conn = nil, onMudLast = {} }
-			eventState.mud = data
-			-- spawn many varied mud patches scattered across the running area.
-			-- players see them during orbit and have to plan a path through.
-			for _ = 1, MUD_PATCH_COUNT do
-				local angle = math.random() * math.pi * 2
-				local radius = MUD_PATCH_RING_MIN + math.random() * (MUD_PATCH_RING_MAX - MUD_PATCH_RING_MIN)
-				local patchRadius = MUD_PATCH_MIN_RADIUS + math.random() * (MUD_PATCH_MAX_RADIUS - MUD_PATCH_MIN_RADIUS)
-				local diameter = patchRadius * 2
-				local patch = Instance.new("Part")
-				patch.Name = "MudPatch"
-				patch.Anchored = true
-				patch.CanCollide = false
-				patch.Shape = Enum.PartType.Cylinder
-				patch.Size = Vector3.new(0.2, diameter, diameter)
-				patch.Material = Enum.Material.Slate
-				patch.Color = Color3.new(0.22, 0.16, 0.1)
-				patch.CFrame = CFrame.new(math.cos(angle) * radius, 0.6, math.sin(angle) * radius)
-					* CFrame.Angles(0, 0, math.rad(90))
-				patch:SetAttribute("Radius", patchRadius)
-				patch.Parent = Workspace
-				table.insert(data.patches, patch)
-			end
-			-- per-frame: if player is inside any mud patch -> SLOW, else DEFAULT.
-			-- transitions only when crossing a boundary (no per-frame WalkSpeed writes).
-			data.conn = RunService.Heartbeat:Connect(function()
-				local current = eventState.mud
-				if not current then
-					return
-				end
-				for player in activePlayers do
-					if not lockedToChair[player] then
-						local character = player.Character
-						local root = character and character:FindFirstChild("HumanoidRootPart")
-						if root then
-							local onMud = false
-							for _, patch in current.patches do
-								local r = patch:GetAttribute("Radius") or MUD_PATCH_MIN_RADIUS
-								local dx = root.Position.X - patch.Position.X
-								local dz = root.Position.Z - patch.Position.Z
-								if dx * dx + dz * dz < r * r then
-									onMud = true
-									break
-								end
-							end
-							if current.onMudLast[player] ~= onMud then
-								current.onMudLast[player] = onMud
-								local _, humanoid = getCharacterParts(player)
-								if humanoid and humanoid.WalkSpeed > 0 then
-									humanoid.WalkSpeed = onMud and SLOW_FLOOR_WALK_SPEED or DEFAULT_WALK_SPEED
-								end
-							end
-						end
-					end
-				end
-			end)
-		end,
-		onRoundEnd = function()
-			local data = eventState.mud
-			if not data then
-				return
-			end
-			if data.conn then
-				data.conn:Disconnect()
-			end
-			for _, patch in data.patches do
-				patch:Destroy()
-			end
-			for player in activePlayers do
-				local _, humanoid = getCharacterParts(player)
-				if humanoid and humanoid.WalkSpeed > 0 then
-					humanoid.WalkSpeed = DEFAULT_WALK_SPEED
-				end
-			end
-			eventState.mud = nil
-		end,
-	},
-	fog = {
-		name = "FOG",
-		onPlayingStart = function()
-			local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
-			if not atmosphere then
-				return
-			end
-			-- snapshot the atmosphere so we can restore exact values on cleanup
-			eventState.fog = {
-				origDensity = atmosphere.Density,
-				origOffset = atmosphere.Offset,
-				origColor = atmosphere.Color,
-				origDecay = atmosphere.Decay,
-				origGlare = atmosphere.Glare,
-				origHaze = atmosphere.Haze,
-			}
-			-- thick yellowish-grey fog. high density obscures distant chairs; haze
-			-- makes the air itself murky.
-			atmosphere.Density = 0.85
-			atmosphere.Offset = 0.25
-			atmosphere.Color = Color3.new(0.45, 0.4, 0.35)
-			atmosphere.Decay = Color3.new(0.4, 0.4, 0.45)
-			atmosphere.Glare = 0
-			atmosphere.Haze = 5
-		end,
-		onRoundEnd = function()
-			local state = eventState.fog
-			local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
-			if atmosphere and state then
-				atmosphere.Density = state.origDensity
-				atmosphere.Offset = state.origOffset
-				atmosphere.Color = state.origColor
-				atmosphere.Decay = state.origDecay
-				atmosphere.Glare = state.origGlare
-				atmosphere.Haze = state.origHaze
-			end
-			eventState.fog = nil
-		end,
-	},
-}
-
-local EVENT_KEYS = { "flickering", "ice", "mud", "fog" }
+-- Event definitions live in Events.luau. We hand it a context bridging the
+-- shared state events read/write: stable tables (activePlayers, lockedToChair)
+-- by reference, and the scalars thaw() reads (walkSpeedOverride, jumpDisabled)
+-- via setters so init keeps the source of truth.
+local createEvents = require(script.Events)
+local eventsModule = createEvents({
+	activePlayers = activePlayers,
+	lockedToChair = lockedToChair,
+	getCharacterParts = getCharacterParts,
+	setWalkSpeedOverride = function(value)
+		walkSpeedOverride = value
+	end,
+	setJumpDisabled = function(value)
+		jumpDisabled = value
+	end,
+})
+local EVENTS = eventsModule.definitions
+local EVENT_KEYS = eventsModule.keys
 
 local function runEventHook(name)
 	local ev = activeEvent and EVENTS[activeEvent]
@@ -806,15 +654,92 @@ local function pickRandomEvent()
 	return EVENT_KEYS[math.random(#EVENT_KEYS)]
 end
 
+local function spawnWinnerParticles(player)
+	-- emit gold confetti from the winner's root part for POST_MATCH_SECS. uses
+	-- no external asset (default white square texture) so it works offline.
+	local root = select(1, getCharacterParts(player))
+	if not root then
+		return
+	end
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "WinnerConfetti"
+	emitter.Rate = 80
+	emitter.Lifetime = NumberRange.new(1.5, 2.5)
+	emitter.Speed = NumberRange.new(14, 22)
+	emitter.SpreadAngle = Vector2.new(180, 180)
+	emitter.Rotation = NumberRange.new(0, 360)
+	emitter.RotSpeed = NumberRange.new(-180, 180)
+	emitter.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.4),
+		NumberSequenceKeypoint.new(1, 0.1),
+	})
+	emitter.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	emitter.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 220, 80)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 160, 40)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 80, 200)),
+	})
+	emitter.LightEmission = 0.5
+	emitter.Acceleration = Vector3.new(0, -25, 0)
+	emitter.Parent = root
+	Debris:AddItem(emitter, POST_MATCH_SECS + 1)
+end
+
+local function playLobbyMusic()
+	-- empty pool = no lobby music configured yet, skip
+	if #LOBBY_MUSIC_TRACKS == 0 then
+		return
+	end
+	local track = LOBBY_MUSIC_TRACKS[math.random(#LOBBY_MUSIC_TRACKS)]
+	PlayMusic:FireAllClients(track)
+end
+
 local function waitForEnoughPlayers()
 	while #Players:GetPlayers() < MIN_PLAYERS do
+		local headcount = #Players:GetPlayers()
+		-- keep the banner + sign in sync as players join/leave during the wait
+		broadcast("Waiting", "WAITING FOR PLAYERS", string.format("%d / %d", headcount, MIN_PLAYERS))
+		World.updateMatchStatus(string.format("WAITING FOR PLAYERS  ·  %d / %d", headcount, MIN_PLAYERS))
 		task.wait(1)
 	end
 end
 
+-- After enough players are present, wait LOBBY_WARMUP_SECS while still in the
+-- lobby. Players see a "MATCH STARTING IN Xs" countdown. If headcount drops
+-- below MIN_PLAYERS at any point, abort the warmup so we don't kick off a
+-- match with too few players.
+local function runLobbyWarmup()
+	if LOBBY_WARMUP_SECS <= 0 then
+		return true
+	end
+	local deadline = os.clock() + LOBBY_WARMUP_SECS
+	while os.clock() < deadline do
+		local headcount = #Players:GetPlayers()
+		if headcount < MIN_PLAYERS then
+			log("Warmup", string.format("headcount fell to %d, aborting", headcount))
+			return false
+		end
+		local remaining = math.max(0, deadline - os.clock())
+		broadcast(
+			"Warmup",
+			"MATCH STARTING",
+			string.format("%d players ready  ·  starting in %ds", headcount, math.ceil(remaining)),
+			remaining
+		)
+		World.updateMatchStatus(string.format("STARTING IN %ds", math.ceil(remaining)))
+		task.wait(1)
+	end
+	return true
+end
+
 local function startMatch()
 	matchInProgress = true
-	activePlayers = {}
+	-- clear in place (don't reassign) so references handed to other modules
+	-- (e.g. the events module) stay valid across matches
+	table.clear(activePlayers)
 	for _, player in Players:GetPlayers() do
 		activePlayers[player] = true
 	end
@@ -824,8 +749,16 @@ end
 while true do
 	log("Waiting", string.format("need %d, have %d", MIN_PLAYERS, #Players:GetPlayers()))
 	broadcast("Waiting", "WAITING FOR PLAYERS", string.format("%d / %d", #Players:GetPlayers(), MIN_PLAYERS))
+	World.updateMatchStatus(string.format("WAITING FOR PLAYERS  ·  %d / %d", #Players:GetPlayers(), MIN_PLAYERS))
+	playLobbyMusic()
 	waitForEnoughPlayers()
+	-- enough players reached; give new joiners a window before starting.
+	-- if someone leaves during warmup we go back to Waiting.
+	if not runLobbyWarmup() then
+		continue
+	end
 	startMatch()
+	World.updateMatchStatus("MATCH IN PROGRESS")
 	local roundNumber = 0
 
 	while countActive() > 1 do
@@ -836,7 +769,10 @@ while true do
 		releaseSits()
 
 		-- round 1 is always normal; rounds 2+ pick a random event.
-		if roundNumber > 1 then
+		-- (FORCE_EVENT overrides both for debugging a specific event.)
+		if FORCE_EVENT then
+			activeEvent = FORCE_EVENT
+		elseif roundNumber > 1 then
 			activeEvent = pickRandomEvent()
 		end
 		local eventLabel = activeEvent and EVENTS[activeEvent].name
@@ -863,15 +799,16 @@ while true do
 
 		local musicDuration = math.random(MUSIC_MIN_SECS, MUSIC_MAX_SECS)
 		log("Playing", string.format("music ON for %ds", musicDuration))
-		broadcast("Playing", "MUSIC ON — KEEP MOVING", string.format("%d players left", countActive()), musicDuration)
+		broadcast("Playing", "MUSIC ON: KEEP MOVING", string.format("%d players left", countActive()), musicDuration)
 		freezeAllActives()
 		startOrbiting()
 		runEventHook("onPlayingStart")
-		PlayMusic:FireAllClients()
+		local trackId = MUSIC_TRACKS[math.random(#MUSIC_TRACKS)]
+		PlayMusic:FireAllClients(trackId)
 		task.wait(musicDuration)
 
 		log("Stopped", string.format("sit now (%ds grace)", SIT_GRACE_SECS))
-		local stoppedSub = eventLabel and (eventLabel .. " — press E to sit") or "press E near a chair"
+		local stoppedSub = eventLabel and (eventLabel .. ": press E to sit") or "press E near a chair"
 		broadcast("Stopped", "SIT NOW!", stoppedSub, SIT_GRACE_SECS)
 		stopOrbiting()
 		thawAllActives()
@@ -916,6 +853,7 @@ while true do
 	-- match over: tear down any leftover freeze/orbit/sit/event state
 	runEventHook("onRoundEnd")
 	activeEvent = nil
+	lastBroadcastEvent = nil
 	stopOrbiting()
 	releaseSits()
 	thawAllActives()
@@ -926,13 +864,27 @@ while true do
 		local winner = next(activePlayers)
 		log("Winner", string.format("*** %s wins! ***", winner.Name))
 		broadcast("Winner", "WINNER", winner.Name)
+		spawnWinnerParticles(winner)
 	else
 		log("Winner", "no winner (everyone fell out)")
 		broadcast("Winner", "NO WINNER", "nobody made it")
 	end
 
 	log("Reset", string.format("next match in %ds", POST_MATCH_SECS))
+	broadcast("Reset", "NEXT MATCH", "starting soon...", POST_MATCH_SECS)
+	playLobbyMusic()
 	hideAllChairs()
-	activePlayers = {}
+	table.clear(activePlayers)
 	task.wait(POST_MATCH_SECS)
+
+	-- kill all characters so the engine respawns them via SpawnLocations (which
+	-- now live inside Workspace.Lobby). matchInProgress is already false, so
+	-- applySpectatorState() won't yank them back to the arena ring.
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if humanoid and humanoid.Health > 0 then
+			humanoid.Health = 0
+		end
+	end
 end
