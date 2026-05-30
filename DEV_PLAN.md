@@ -14,14 +14,30 @@ Si estás retomando este proyecto desde contexto cero:
 
 1. **Lee este file de arriba a abajo** — refleja el estado real del código y el roadmap.
 2. **Mira las memorias** en `~/.claude/projects/-Users-diegosalas-Documents-projects-infernal-chairs/memory/` — capturan los aprendizajes técnicos que no son obvios mirando el código (Rojo quirks, server/client split, FrictionWeight, marketplace policy).
-3. **El código vivo está en**:
-   - `src/server/init.server.luau` — state machine, orbit, sit, spectator, eventos
-   - `src/server/Config.luau` — todas las constantes tunables
-   - `src/client/init.client.luau` — UI (banner, countdown, overlay) + música
-   - `default.project.json` — declaración del mapa (Baseplate, Track, Room, Spawns)
-   - `assets/chair.rbxm` — modelo de silla del Marketplace bundled
+3. **El código vivo está partido en módulos** (refactor hecho — `init.server` quedó como orquestador delgado):
+   - **Server** (`src/server/`):
+     - `init.server.luau` — game loop (state machine), sit, orbit, spectator, eliminación
+     - `Config.luau` — todas las constantes tunables (única fuente de verdad)
+     - `Events.luau` — definiciones de eventos (ice/mud/fog/flickering), factory con contexto
+     - `World.luau` — construcción de escena (arena shell desde `ARENA_RADIUS`, signs, partículas)
+     - `Decor.luau` — slots de props del **arena** (DiscoBall, DjBooth, Speakers), placeholders
+   - **Client** (`src/client/`):
+     - `init.client.luau` — bridges RemoteEvents → audio, SFX, fog particles
+     - `Hud.luau` — toda la UI (banner, countdown, eliminated overlay, welcome modal)
+   - **JSON**: `default.project.json` declara Baseplate, Lobby (shell + signs + lobby-decor), SpawnPads, Chairs.
+   - **Assets `.rbxm`** (bundled del Marketplace, sin scripts maliciosos, sin Sounds autoplay):
+     - `chair.rbxm` — silla del juego (también usada para los signs decorativos antes, ya no)
+     - `disco-ball.rbxm` — el disco ball del arena (con scripts de rotación + parpadeo benignos)
+     - `dj-table.rbxm`, `speaker.rbxm`, `couch.rbxm`, `juke-box.rbxm`, `plant.rbxm` — props
+     - `lobby-decor.rbxm` — el Folder con los muebles del lobby, editado **visualmente en Studio** (ver workflow abajo)
+     - `ice.rbxm` — asset del piso de hielo del evento ice
 4. **Para jugar**: `rojo serve` desde la raíz, plugin Rojo en Studio → Connect, abrir el `.rbxl`, F5.
-5. **Próximo paso recomendado**: ver sección [Próximos pasos](#próximos-pasos--orden-recomendado) más abajo. Hoy lo más alto en prioridad es **Fase 10 (Polish)** porque el core jugable está completo.
+5. **Loop diario con Rojo** (importante — qué requiere reiniciar qué):
+   - Edité `.luau` o `.rbxm` → solo **re-Play** (Shift+F5 → F5). Rojo y Studio sincronizan solos.
+   - Edité `default.project.json` → **reiniciar `rojo serve`** (matar y volver a iniciar) + Disconnect/Connect plugin + re-Play.
+   - Edité el lobby decor en Studio (mover/agregar muebles) → click derecho en `Workspace.Lobby.Decor` → **Save to File** → sobreescribir `assets/lobby-decor.rbxm`. Después reiniciar rojo + reconnect + re-Play.
+   - **Tres formas de construir contenido**: ver `ROBLOX_PLAYBOOK.md` sección 4 — JSON / código / `.rbxm` Save-to-File, con tabla de decisión.
+6. **Próximo paso recomendado**: ver sección [Próximos pasos](#próximos-pasos--orden-recomendado). Hoy lo más alto en prioridad: terminar de decorar el lobby (agregar más muebles al `.rbxm`) y/o **Fase 13 (DataStore)** / **Fase 14 (más eventos)**.
 
 ---
 
@@ -127,35 +143,72 @@ Sistema extensible con hooks (`onPlayingStart`, `onStoppedStart`, `onRoundEnd`).
 
 El sistema de eventos ya está sólido y extensible. **Antes de meter más eventos, hay otros frentes que dan más retorno por hora invertida.** Orden sugerido:
 
-### Fase 10 · Polish (siguiente recomendado) — ⏳ pending
+### Fase 10 · Polish — ✅ done
 
-Pequeños toques que multiplican la sensación de "juego serio". Cada uno son 15-30 min de trabajo + buscar/subir el asset de audio.
+Infraestructura de polish lista. La animación, partículas, música rotativa y SFX-on-event ya disparan. Los SoundIds de SFX están vacíos en `Config.luau` (server) y como locales en `init.client.luau` (cliente) — pegá ahí los IDs del marketplace cuando los tengas y el código los toca automáticamente sin más cambios.
 
-- ⏳ **SFX del stop** — sonido corto de "alarma/sirena" justo cuando para la música. Cliente lo dispara desde el `StopMusic.OnClientEvent`. Asset: Marketplace audio o sube tu propio mp3 corto.
-- ⏳ **SFX de eliminación** — "bzzt" o "game over chime" cuando recibís `YouEliminated`. Sonido per-client en `YouEliminated.OnClientEvent`.
-- ⏳ **Partículas del ganador** — `ParticleEmitter` adjunto al `HumanoidRootPart` del ganador durante la fase `Winner`. Confeti / chispas doradas.
-- ⏳ **Animación del banner del evento** — cuando aparece "★ EVENT NAME", que el banner haga un punch/zoom + cambio de color brusco para que sea evidente que cambió el juego.
-- ⏳ **Música rotativa** — array de `SoundId`s, cada match elige uno random. Sin esto el track se repite y cansa.
-- ⏳ **Lobby loop pulido** — countdown grande "next match in Xs" entre matches en lugar del texto chiquito actual.
+- ✅ **SFX del stop** — `playSfx(stopSfx)` en `StopMusic.OnClientEvent`. SoundId vacío = no-op; pegá tu ID en `STOP_SFX_ID` (cliente) para activarlo.
+- ✅ **SFX de eliminación** — `playSfx(eliminateSfx)` en `YouEliminated.OnClientEvent`. Mismo patrón: setear `ELIMINATE_SFX_ID`.
+- ✅ **Partículas del ganador** — `spawnWinnerParticles` adjunta un `ParticleEmitter` al `HumanoidRootPart` del ganador durante la fase Winner. Confeti dorado/naranja/rosa, auto-destruido vía `Debris:AddItem` después de `POST_MATCH_SECS + 1`. Sin asset externo (textura default).
+- ✅ **Animación del banner del evento** — `UIScale` en el banner + `TweenService` punch (1 → 1.25 → 1) con flash de color a oro. Server manda `eventChanged = true` solo cuando el evento activo cambia; cliente dispara `punchBanner(phaseColor)`.
+- ✅ **Música rotativa** — `Config.MUSIC_TRACKS` es un array de SoundIds. Server pickea random y lo envía con `PlayMusic:FireAllClients(trackId)`. Cliente cambia `Music.SoundId` solo si difiere del actual (no reset si se repite la misma).
+- ✅ **Lobby loop pulido** — `lobbyFrame` centrado, grande, solo visible en fase Reset. Cuenta los segundos hasta el próximo match con texto dorado gigante.
 
-### Fase 11 · Tutorial / Onboarding — ⏳ pending
+### Fase 11 · Tutorial / Onboarding — ✅ done
 
-La primera partida es muy confusa sin contexto. Necesitamos que un jugador nuevo entienda las reglas en los primeros 30 segundos.
+Tres capas de onboarding superpuestas: bienvenida explícita al join, recordatorio durante la fase Stopped, y referencia ambiental siempre disponible en el mapa.
 
-- ⏳ **Overlay one-time** la primera vez que un player joinea: "Press E to sit near a chair when music stops" + "You can't control yourself during music" + "Last to sit gets eliminated". Almacenar el flag en DataStore para no mostrar de nuevo.
-- ⏳ **Tooltip persistente** durante la fase `Stopped`: ícono grande "E" arriba a la izquierda, recordatorio visible.
-- ⏳ **Sign in lobby** (físico, modelo 3D) con resumen de reglas para players que están esperando.
+- ✅ **Welcome overlay** al joinear: panel full-screen oscuro con las 3 reglas + botón "GOT IT". Se muestra una vez por sesión (el LocalScript corre una sola vez al entrar). La persistencia entre sesiones queda para Fase 13 (DataStore).
+- ✅ **Tooltip "E" en Stopped**: `sitTipFrame` arriba a la izquierda con un cuadradito dorado grande con la letra "E" + texto "PRESS TO SIT". Solo visible cuando `payload.phase == "Stopped"`.
+- ✅ **Sign 3D en lobby**: Part `Workspace.Room.RulesSign` (22×14×0.4) pegado a la pared norte (z=68.8) con `SurfaceGui` + 2 `TextLabel`s (Title dorado + reglas en blanco). El Part está declarado en `default.project.json`; el GUI tree lo construye `setupRulesSign()` en `init.server.luau` al startup (más simple que pelear con UDim2 en JSON — ver memoria `rojo_path_quirks.md` para detalle).
 
-### Fase 12 · Lobby liviano — ⏳ pending
+### Fase 12.5 · Lobby v2 (matchmaking + status board) — ✅ done
 
-Mientras se espera que entren players (fase `Waiting`), darles algo que hacer / mirar.
+Añadidos para resolver el problema "ni bien joineás te mete al match" y dejar el lobby preparado para futuras features sociales/monetización.
 
-- ⏳ **Spawn area separada del arena**: una sala chica al lado de la sala principal con música ambiente más relajada. Los players spawn-ean ahí en `Waiting` y se teletransportan al arena cuando empieza el match.
-- ⏳ **Decoración del lobby**: signs, espejos, sillas decorativas (no las del juego), props.
-- ⏳ **Counter visible** "Players: 3/2" más grande, no solo el banner.
-- ⏳ Música distinta en lobby vs match (más chill).
+- ✅ **Warmup countdown**: `Config.LOBBY_WARMUP_SECS = 15`. Una vez alcanzado `MIN_PLAYERS`, el server entra a fase `Warmup` y espera 15s antes de arrancar el match. Si la headcount baja del mínimo durante el warmup, `runLobbyWarmup()` aborta y el loop vuelve a `Waiting`. Banner muestra "MATCH STARTING · X players ready · starting in Ns" en naranja (`PHASE_COLORS.Warmup`).
+- ✅ **MIN_PLAYERS subido**: 2 → 3. Un 1vs1 era trivial; con 3 ya hay tensión real.
+- ✅ **MatchStatusSign 3D**: Part en `Workspace.Lobby` pegado a la pared sur (frente al `RulesSign` del norte). Server lo actualiza en vivo vía `updateMatchStatus(text)`: "WAITING FOR PLAYERS · 2/3" / "STARTING IN 12s" / "MATCH IN PROGRESS". Sin RemoteEvent extra — el server modifica el TextLabel server-side y Roblox replica automáticamente.
+- ✅ **Fix respawn mid-round** (deuda técnica resuelta): si un activo muere durante el match, `onCharacterAdded` ahora detecta que sigue siendo activo y re-aplica el estado de la fase actual. Si estamos en Playing → `freezeAndAssign` con su angle previo (sigue orbitando sin interrupciones); si estamos en Stopped/Judgement → `thaw()` aplicando el `walkSpeedOverride` y `jumpDisabled` del evento activo.
 
-### Fase 13 · Persistencia (DataStore) — ⏳ pending
+**Lo que NO se hizo** (postpuesto explícitamente):
+- `MAX_PLAYERS_PER_MATCH` — por ahora el cap del Roblox server (`Players.MaxPlayers`, default ~50) maneja eso. Las sillas escalan dinámicamente con N players.
+- Multi-place / matchmaking — pertenece a Fase 16, requiere `TeleportService` + DataStore.
+- Stands de Robux / Season Pass — pertenece a Fase 15.
+- Extraer `EVENTS` a `Events.luau` — sigue siendo solo 4 eventos; postpuesto hasta 6+.
+
+### Fase 12.6 · Decoración con assets del Marketplace — ✅ done (loop continuo)
+
+Se trajeron props del Toolbox para vestir arena + lobby. Dos mecanismos distintos según el tipo de decoración:
+
+- ✅ **Slots del arena (parametrizados por código)**: `Decor.luau` define slots cuyas posiciones derivan de `Config.ARENA_RADIUS`, `ARENA_WALL_HEIGHT`, `ARENA_PILLAR_RADIUS`. Cuando un template existe en `ReplicatedStorage.Templates` (declarado en `default.project.json` con `$path`), el slot se llena con ese modelo; si no, muestra un **placeholder magenta con etiqueta** (controlado por `SHOW_PLACEHOLDERS`). Slots actuales: `DiscoBall` (centro del techo), `DjBooth` (pared norte), `Speaker` × 4 (esquinas). Flag `floor = true` en el slot ajusta automáticamente el Y para que el bottom del bounding box del modelo quede en `slot.pos.Y` (independiente de dónde el modelo tenga su pivot — Marketplace los pone en cualquier lado).
+
+- ✅ **Lobby decor (editado visualmente en Studio)**: en vez de slots con coordenadas a dedo, los muebles del lobby viven en un `.rbxm` (`assets/lobby-decor.rbxm`) editado a mano. Workflow:
+  1. En Studio (modo Edit), `Workspace.Lobby.Decor` se sincroniza desde el `.rbxm` vía Rojo.
+  2. Para agregar/mover muebles: duplicar templates de `ReplicatedStorage.Templates`, arrastrarlos al Folder `Decor`, posicionar con el mouse.
+  3. Click derecho en `Decor` → **Save to File** → sobreescribir `assets/lobby-decor.rbxm`.
+  4. Reiniciar `rojo serve` + Disconnect/Connect del plugin + F5.
+
+- ✅ **Limpieza manual del asset al importar**: el código NO toca los contenidos de los `.rbxm` (no destruye Sounds, no borra scripts). Vos abrís el asset en Studio, borrás manualmente lo que no querés (Sounds autoplay, scripts maliciosos), después Save to File. El playbook tiene un checklist específico para este flujo. **Razón**: borrar todo a ciegas en código rompe props que legítimamente necesitan scripts (como la rotación del disco ball). El asset que ves en el `.rbxm` es lo que aparece en el juego — sin magia oculta.
+
+- ✅ **Bug clave aprendido (PlayOnRemove)**: si un Sound tiene `PlayOnRemove = true`, hacer `:Destroy()` lo **dispara** en vez de silenciarlo. Si vas a destruir Sounds en código, setear `PlayOnRemove = false` ANTES de destruirlos. Sino dejá el Sound vivo con `Volume = 0`/`Playing = false`.
+
+- ✅ **Lección sobre Rojo + Studio**: el server-side code (Decor.build, etc.) **no se re-ejecuta** cuando Rojo sincroniza un cambio en el filesystem — solo al re-Play. Eso explica el clásico "edité X y no veo el cambio aún": reconectar el plugin actualiza el árbol estático, pero los Scripts ya corriendo no se reinician. Ver tabla de "loop diario con Rojo" en Quick start.
+
+Assets bundleados hasta ahora: `disco-ball`, `dj-table`, `speaker`, `couch` (Sofa), `juke-box` (Jukebox), `plant`. Falta seguir agregando muebles al `lobby-decor.rbxm` (más sofás, plantas, mesas, cuadros, etc.) — workflow loop continuo.
+
+### Fase 12 · Lobby liviano — ✅ done
+
+Sala separada del arena (al sur, a `z = -200`) donde los players spawnean y vuelven entre matches. Reusa todo lo que ya existía (SpawnLocations, freezeAndAssign para el "teleport" al arena vía orbit, `applySpectatorState` para los eliminados, `PlayMusic` RemoteEvent).
+
+- ✅ **Spawn area separada**: `Workspace.Lobby` (Folder) con `Floor/Ceiling/Walls/AmbientLight` formando una sala 80×22×80 centrada en `(0, _, -200)`. Los 8 SpawnLocations se movieron a un anillo de radio 18 dentro del lobby (Roblox respawnea ahí automáticamente).
+- ✅ **Teleport implícito al arena**: no hace falta código nuevo — al empezar `Playing`, `freezeAllActives()` ya pone a cada activo en una posición orbital, lo que efectivamente los teletransporta del lobby al arena.
+- ✅ **Respawn al lobby al fin del match**: después de `task.wait(POST_MATCH_SECS)`, el server mata a todos los `Humanoid`s sobrevivientes → Roblox los respawnea vía `SpawnLocations` (que ahora viven en el lobby). `matchInProgress = false` en ese momento, así que `applySpectatorState` no los manda al ring del arena.
+- ✅ **Decoración** (cambió a un mejor approach — ver Fase 12.6): inicialmente 3 sillas decorativas clonadas en código. Después se reemplazó por el sistema de **lobby-decor.rbxm editado en Studio** porque editar muebles con coordenadas a dedo era frustrante; con el `.rbxm` Save-to-File los movés con el mouse. El `RulesSign` y `MatchStatusSign` siguen donde estaban (pegados a las paredes norte/sur respectivamente).
+- ✅ **Música del lobby**: `Config.LOBBY_MUSIC_TRACKS` (array separado del match music, vacío por default — pegá un SoundId del marketplace para activarlo). `playLobbyMusic()` se dispara al entrar a Waiting y a Reset; el cliente solo cambia `Music.SoundId` si difiere del actual (no reset si ya está tocando el mismo).
+- ✅ **Counter de players**: SKIP. La PlayerList nativa de Roblox (arriba a la derecha) ya muestra todos los players con sus nombres; el banner ya muestra "WAITING FOR PLAYERS X/MIN_PLAYERS" durante Waiting. No vale la pena un counter custom encima — sería redundante.
+
+### Fase 13 · Persistencia (DataStore) (siguiente recomendado) — ⏳ pending
 
 Hacer que ganar/perder importe. Sin esto el juego es un loop infinito sin progresión.
 
@@ -212,9 +265,22 @@ Solo necesario si llegamos a 50+ servidores concurrentes o queremos UX más puli
 
 Stuff que vimos en la auditoría pero no amerita arreglar hoy. Anotar acá para no olvidar:
 
-1. **Player respawn mid-round**: si un jugador muere/respawnea mientras está activo (no eliminado), el nuevo character no recibe `SetNetworkOwner(nil)` ni la WalkSpeed correcta para el evento activo. En la práctica esto solo pasa si algo externo (caída, glitch) los mata — los activos están freezeados durante orbit y locked durante sit. Fix: re-aplicar el estado del player en `onCharacterAdded` si es activo.
+1. ~~**Player respawn mid-round**~~ ✅ resuelto en Fase 12.5: `onCharacterAdded` ahora re-aplica el estado del player si sigue siendo activo. Si estamos en Playing, vuelve a la órbita con su angle previo; si estamos en Stopped/Judgement, recibe el `walkSpeedOverride` + `jumpDisabled` correcto.
 
-2. **Bloque `EVENTS` (~200 líneas) en `init.server.luau`**: cuando lleguemos a 6+ eventos vale la pena moverlo a `src/server/Events.luau`. Por ahora se queda en el archivo principal porque los eventos toman closure sobre mucho estado (activePlayers, lockedToChair, eventState, walkSpeedOverride, jumpDisabled, getCharacterParts…) y extraerlo requiere diseñar una API de contexto. ~~Constantes mezcladas~~ ✅ resuelto con `Config.luau`.
+2. ~~**Bloque `EVENTS` (~200 líneas) en `init.server.luau`**~~ ✅ resuelto: extraído a `src/server/Events.luau` como una factory `create(ctx)`. La "API de contexto" pasa tablas estables por referencia (`activePlayers`, `lockedToChair` — init las muta con `table.clear`, nunca reasigna) y los escalares que `thaw()` lee (`walkSpeedOverride`, `jumpDisabled`) vía setters, manteniendo init como source of truth.
+
+### Arquitectura modular (refactor hecho)
+
+El código está partido en módulos por responsabilidad (el `init` orquesta, la lógica vive en módulos):
+
+- **`src/server/init.server.luau`** (~890 líneas): game loop (state machine), sit lock, orbit, spectator, eliminación.
+- **`src/server/Config.luau`**: constantes tunables (fuente única). `init` crea aliases locales.
+- **`src/server/Events.luau`**: definiciones de eventos. Factory `create(ctx)` → `{ definitions, keys }`. `runEventHook`/`pickRandomEvent` quedan en init (referencian `activeEvent`).
+- **`src/server/World.luau`**: construcción de escena estática. Fachada `World.build()` (arena shell desde `ARENA_RADIUS` + lobby decor + signs) y `World.updateMatchStatus(text)`.
+- **`src/client/init.client.luau`** (~125 líneas): bridges RemoteEvents → audio, SFX, fog (efectos no-UI).
+- **`src/client/Hud.luau`**: toda la UI + su lógica. Fachada `Hud.applyState(payload)` y `Hud.flashEliminated()`.
+
+Pendiente si crece: un `ChairService` (sillas + lógica de sit están acopladas en init) y un `GameState` (centralizar `activePlayers`/`lockedToChair`/etc. detrás de una API en vez de upvalues sueltos). No urgente.
 
 ---
 
@@ -261,15 +327,56 @@ Todas las constantes viven en **`src/server/Config.luau`**. El archivo `init.ser
 
 Las secciones del módulo:
 
-- **Match cadence**: `MIN_PLAYERS`, `INTERMISSION_SECS`, `MUSIC_MIN_SECS/MAX_SECS`, `SIT_GRACE_SECS`, `POST_MATCH_SECS`, `VERDICT_PAUSE_SECS`
-- **Chair placement**: `CHAIR_COUNT`, `CHAIR_RADIUS_MIN/MAX`, `CHAIR_MIN_SEPARATION`, `CHAIR_PLACEMENT_ATTEMPTS`
-- **Orbit**: `ORBIT_RADIUS`, `ORBIT_ANGULAR_SPEED`, `ORBIT_HEIGHT`
+- **Match cadence**: `MIN_PLAYERS`, `LOBBY_WARMUP_SECS`, `INTERMISSION_SECS`, `MUSIC_MIN_SECS/MAX_SECS`, `SIT_GRACE_SECS`, `POST_MATCH_SECS`, `VERDICT_PAUSE_SECS`
+- **Arena geometry (fuente única de verdad)**: `ARENA_RADIUS` + factores. **Cambiar `ARENA_RADIUS` reescala TODO el arena de un saque** — paredes, techo, track, órbita, dispersión de sillas, pillars, neon strips, y hasta el spread/count del mud. El resto de la geometría se computa de ahí (`ARENA_TRACK_RADIUS`, `ARENA_PILLAR_RADIUS`, `ARENA_NEON_RADIUS`, `ORBIT_RADIUS`, `CHAIR_RADIUS_MAX`...). El shell del arena se **construye en código** (`buildArena()` en `init.server.luau`) porque `default.project.json` no puede computar relaciones — ver decisión abajo.
+- **Chair placement**: `CHAIR_COUNT`, `CHAIR_RADIUS_MIN`, `CHAIR_MIN_SEPARATION`, `CHAIR_PLACEMENT_ATTEMPTS` (`CHAIR_RADIUS_MAX` es derivado del `ARENA_RADIUS`)
+- **Orbit**: `ORBIT_ANGULAR_SPEED`, `ORBIT_HEIGHT` (`ORBIT_RADIUS` es derivado)
 - **Movement defaults**: `DEFAULT_WALK_SPEED`, `DEFAULT_JUMP_POWER`, `DEFAULT_JUMP_HEIGHT`
 - **Sit**: `SIT_PROMPT_DISTANCE`
 - **Spectator**: `SPECTATOR_RING_OFFSET_MIN/MAX`, `SPECTATOR_HEIGHT`
 - **Visual**: `DEFAULT_TRACK_COLOR`
-- **Events**: `ICE_TRACK_COLOR`, `ICE_WALK_SPEED`, `SLOW_FLOOR_WALK_SPEED`, `MUD_PATCH_*`
+- **Audio**: `MUSIC_TRACKS`, `LOBBY_MUSIC_TRACKS`, `STOP_SFX_ID`, `ELIMINATE_SFX_ID` (+ volúmenes)
+- **Events**: `FORCE_EVENT` (debug), `ICE_TRACK_COLOR`, `ICE_WALK_SPEED`, `SLOW_FLOOR_WALK_SPEED`, `MUD_PATCH_*` (count/ring derivados del `ORBIT_RADIUS`)
+
+### Por qué el arena se construye en código y el lobby en JSON
+
+El arena tiene que **reescalarse desde un solo número** (`ARENA_RADIUS`), y JSON es estático (no computa). Así que `buildArena()` arma track + paredes + techo + pillars + neon + centerlight derivados de las constantes. El **lobby** se queda en `default.project.json` porque es de tamaño fijo (no se reescala) y declararlo en JSON es más directo. Convención: geometría que deriva de un parámetro → código; geometría fija → JSON. El `fog` (partículas) y los signos (`RulesSign`/`MatchStatusSign`, por el quirk de UDim2 en JSON) también se arman en código.
 
 ## Idle entre matches
 
 Cuando termina un match, el server hace cleanup completo (`runEventHook("onRoundEnd")`, `releaseSits`, `thawAllSpectators`, `hideAllChairs`), espera `POST_MATCH_SECS`, y vuelve al loop. Si no hay suficientes jugadores, queda en fase Waiting hasta que llegan. Si todos se desconectan a mitad de partida, `Players.PlayerRemoving → cleanupPlayer` limpia `activePlayers` y el `while countActive() > 1` sale solo.
+
+---
+
+## Estado actual y próximos pasos concretos (snapshot al cambiar de PC)
+
+### ✅ Lo que está terminado y funcionando
+- Core completo: state machine de match (Waiting → Warmup → Intermission → Playing → Stopped → Judgement → Winner → Reset), sit lock, orbit forzado, spectator ring, eliminación.
+- 4 eventos de ronda: `flickering`, `ice`, `mud`, `fog`. Sistema extensible (factory con contexto en `Events.luau`).
+- UI completa: banner, countdown, eliminated overlay, welcome modal, todos en `Hud.luau`.
+- Lobby con sala separada, SpawnPads, RulesSign, MatchStatusSign, partículas ambientales.
+- Arena parametrizada (todo deriva de `ARENA_RADIUS = 100` en Config).
+- Anillo de neón + barrera invisible en el borde del playfield (los activos no pueden salir).
+- Refactor modular: `init.server` 1416 → 888 líneas; `init.client` 452 → 124 líneas. Módulos: `World`, `Events`, `Decor`, `Hud`, `Config`.
+- Decoración Marketplace: `disco-ball`, `dj-table`, `speaker`, `couch`, `juke-box`, `plant` bundleados. Arena slots vía `Decor.luau`; lobby vía `lobby-decor.rbxm` editado en Studio (workflow Save-to-File).
+
+### 🔄 In progress / loop continuo (no urgente)
+- **Seguir decorando el lobby**: el `lobby-decor.rbxm` arrancó con un sofá. Cuando quieras, agregás más muebles en Studio (más sofás, plantas, jukebox, mesas, cuadros, etc.), Save to File, listo. El workflow está documentado en Quick start + Playbook sección 4.
+- **Llenar SoundIds vacíos**: en `Config.luau` las constantes `STOP_SFX_ID`, `ELIMINATE_SFX_ID`, `LOBBY_MUSIC_TRACKS = {}`. Cuando subas/elijas assets de audio del Marketplace, pegás los IDs y se activan automáticamente (sin tocar código).
+
+### ⏳ Pendiente (siguiente decisión cuando retomes)
+Las opciones reales para seguir:
+1. **Fase 13 · DataStore / persistencia** — wins, streak, leaderstats sidebar. Ganar empieza a importar. Es el "siguiente recomendado" del plan.
+2. **Fase 14 · Más eventos** — `reverseControls`, `lavaPits`, `speedBoost`, `shrinkingChairs`, `teleportSit`, `darknessAndSpotlight`. Cada uno ~30 líneas en `Events.luau` siguiendo el patrón existente.
+3. **Pulir lo existente** — animaciones más vistosas del winner, anuncio de qué hace cada evento al empezar, ajustes finos visuales.
+
+Las fases 15 (monetización), 16 (multi-place), 17 (accesibilidad) son más a futuro — solo cuando haya retención real de jugadores.
+
+### Cómo retomar en una PC nueva (checklist)
+1. Clonar el repo + `cd` adentro.
+2. `rokit install` (instala Rojo, StyLua, Selene desde `rokit.toml`).
+3. `rojo serve` desde la raíz (deja la terminal abierta).
+4. Abrir Studio, instalar/abrir el plugin de Rojo, **Connect** a `localhost:34872`.
+5. Verificar que el árbol aparezca con `Workspace.Lobby.Decor` (vienen muebles del `.rbxm`).
+6. **F5** (Play) para probar.
+7. Para hacer cambios: mirá la tabla "Loop diario con Rojo" en el Quick start arriba.
