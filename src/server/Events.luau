@@ -27,9 +27,20 @@ local MUD_PATCH_MAX_RADIUS = Config.MUD_PATCH_MAX_RADIUS
 local MUD_PATCH_RING_MIN = Config.MUD_PATCH_RING_MIN
 local MUD_PATCH_RING_MAX = Config.MUD_PATCH_RING_MAX
 
+local function getArenaShell()
+	local arena = Workspace:FindFirstChild("Arena")
+	return arena and arena:FindFirstChild("Shell")
+end
+
 local function getCenterPointLight()
-	local part = Workspace:FindFirstChild("Room") and Workspace.Room:FindFirstChild("CenterLight")
+	local shell = getArenaShell()
+	local part = shell and shell:FindFirstChild("CenterLight")
 	return part and part:FindFirstChildOfClass("PointLight")
+end
+
+local function getTrack()
+	local shell = getArenaShell()
+	return shell and shell:FindFirstChild("Track")
 end
 
 local EVENT_KEYS = { "flickering", "ice", "mud", "fog" }
@@ -106,7 +117,7 @@ local function create(ctx)
 			-- the character — practically frictionless. Also disable jump so players
 			-- can't escape the slide, and raise WalkSpeed for more skidding momentum.
 			onPlayingStart = function()
-				local track = Workspace:FindFirstChild("Track")
+				local track = getTrack()
 				if track then
 					track.Material = Enum.Material.Ice
 					track.Color = ICE_TRACK_COLOR
@@ -116,7 +127,7 @@ local function create(ctx)
 				ctx.setJumpDisabled(true)
 			end,
 			onRoundEnd = function()
-				local track = Workspace:FindFirstChild("Track")
+				local track = getTrack()
 				if track then
 					track.Material = Enum.Material.Plastic
 					track.Color = DEFAULT_TRACK_COLOR

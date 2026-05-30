@@ -123,11 +123,13 @@ local function allChairs()
 end
 
 local function cloneChairsFromTemplate()
-	-- the chair Model is loaded by Rojo from assets/chair.rbxm.
+	-- the chair Model lives in ReplicatedStorage.Templates (versioned in the .rbxl,
+	-- not in a .rbxm — Rojo can't roundtrip Marketplace assets with MaterialVariant
+	-- / AeroMeshData / binary mesh props).
 	local templates = ReplicatedStorage:FindFirstChild("Templates")
 	local template = templates and templates:FindFirstChild("Chair")
 	if not template then
-		warn("[Chairs] ReplicatedStorage.Templates.Chair missing: check assets/chair.rbxm")
+		warn("[Chairs] ReplicatedStorage.Templates.Chair missing: import a Chair model into it via Studio")
 		return false
 	end
 	print(
@@ -139,7 +141,7 @@ local function cloneChairsFromTemplate()
 		)
 	)
 	if not template:IsA("Model") then
-		warn(string.format("[Chairs] expected Model, got %s: fix assets/chair.rbxm", template.ClassName))
+		warn(string.format("[Chairs] expected Model, got %s: fix the Chair in ReplicatedStorage.Templates", template.ClassName))
 		return false
 	end
 
@@ -622,6 +624,7 @@ Decor.build()
 cloneChairsFromTemplate()
 setupChairModels()
 setupChairPrompts()
+hideAllChairs() -- hide right after spawn; otherwise the clones sit at the template's CFrame (wherever you dropped it in Studio) until the first match cleanup runs.
 
 -- ===== Round events =====
 -- Event definitions live in Events.luau. We hand it a context bridging the

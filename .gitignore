@@ -1,19 +1,18 @@
-# Roblox place files (build output of `rojo build`)
-*.rbxl
-*.rbxlx
+# NOTE: *.rbxl/*.rbxlx are VERSIONED (not ignored) — the lobby decor lives in
+# the .rbxl directly because Rojo can't roundtrip Marketplace assets with PBR /
+# MaterialVariantSerialized / binary mesh properties. See ROBLOX_PLAYBOOK.md
+# section 3 (Rojo quirks) for the full story.
 
 # Studio lock files
 *.rbxl.lock
 *.rbxlx.lock
 
-# Ignore .rbxm/.rbxmx everywhere by default (build artifacts, Studio backups,
-# stray exports), but KEEP the source assets in assets/ — those are bundled
-# Marketplace models referenced by default.project.json via $path. Without
-# them the repo can't build on another machine.
+# Ignore .rbxm/.rbxmx everywhere (build artifacts, Studio backups, stray exports).
+# We no longer use $path to .rbxm for Marketplace assets — Rojo can't roundtrip
+# their PBR/MaterialVariant/binary mesh properties cleanly. All such assets live
+# inside the .rbxl directly (Workspace.Lobby.Decor + ReplicatedStorage.Templates).
 *.rbxm
 *.rbxmx
-!assets/*.rbxm
-!assets/*.rbxmx
 
 # Rojo build artifacts
 sourcemap.json

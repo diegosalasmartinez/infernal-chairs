@@ -16,13 +16,7 @@
       },
       "Templates": {
         "$className": "Folder",
-        "Chair": { "$path": "assets/chair.rbxm" },
-        "DiscoBall": { "$path": "assets/disco-ball.rbxm" },
-        "DjBooth": { "$path": "assets/dj-table.rbxm" },
-        "Speaker": { "$path": "assets/speaker.rbxm" },
-        "Sofa": { "$path": "assets/couch.rbxm" },
-        "Jukebox": { "$path": "assets/juke-box.rbxm" },
-        "Plant": { "$path": "assets/plant.rbxm" }
+        "$ignoreUnknownInstances": true
       }
     },
 
@@ -64,296 +58,195 @@
       },
       "Lobby": {
         "$className": "Folder",
-        "Floor": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "Material": "Concrete",
-            "Color": [0.22, 0.18, 0.26],
-            "Position": [0, 0.25, -200],
-            "Size": [80, 0.5, 80]
-          }
-        },
-        "Ceiling": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "Material": "Concrete",
-            "Color": [0.07, 0.06, 0.1],
-            "Position": [0, 22, -200],
-            "Size": [80, 1, 80]
-          }
-        },
-        "WallNorth": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "Material": "Concrete",
-            "Color": [0.14, 0.1, 0.2],
-            "Position": [0, 11, -160],
-            "Size": [80, 22, 1]
-          }
-        },
-        "WallSouth": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "Material": "Concrete",
-            "Color": [0.14, 0.1, 0.2],
-            "Position": [0, 11, -240],
-            "Size": [80, 22, 1]
-          }
-        },
-        "WallEast": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "Material": "Concrete",
-            "Color": [0.14, 0.1, 0.2],
-            "Position": [40, 11, -200],
-            "Size": [1, 22, 80]
-          }
-        },
-        "WallWest": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "Material": "Concrete",
-            "Color": [0.14, 0.1, 0.2],
-            "Position": [-40, 11, -200],
-            "Size": [1, 22, 80]
-          }
-        },
-        "NeonStripNorth": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "CanCollide": false,
-            "Material": "Neon",
-            "Color": [0.7, 0.4, 1],
-            "Position": [0, 20, -160.4],
-            "Size": [78, 0.4, 0.2]
-          }
-        },
-        "NeonStripSouth": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "CanCollide": false,
-            "Material": "Neon",
-            "Color": [0.7, 0.4, 1],
-            "Position": [0, 20, -239.6],
-            "Size": [78, 0.4, 0.2]
-          }
-        },
-        "NeonStripEast": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "CanCollide": false,
-            "Material": "Neon",
-            "Color": [0.7, 0.4, 1],
-            "Position": [39.6, 20, -200],
-            "Size": [0.2, 0.4, 78]
-          }
-        },
-        "NeonStripWest": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "CanCollide": false,
-            "Material": "Neon",
-            "Color": [0.7, 0.4, 1],
-            "Position": [-39.6, 20, -200],
-            "Size": [0.2, 0.4, 78]
-          }
-        },
-        "CeilingLight": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "CanCollide": false,
-            "Transparency": 1,
-            "Position": [0, 20, -200],
-            "Size": [1, 1, 1]
-          },
-          "Light": {
-            "$className": "PointLight",
+        "$ignoreUnknownInstances": true,
+        "Shell": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true,
+          "WallNorth": {
+            "$className": "Part",
             "$properties": {
-              "Brightness": 3,
-              "Range": 60,
-              "Color": [0.85, 0.7, 1],
-              "Shadows": false
+              "Anchored": true,
+              "Locked": true,
+              "Material": "Concrete",
+              "Color": [0.14, 0.1, 0.2],
+              "Position": [0, 11, -160],
+              "Size": [80, 22, 1]
+            }
+          },
+          "WallSouth": {
+            "$className": "Part",
+            "$properties": {
+              "Anchored": true,
+              "Locked": true,
+              "Material": "Concrete",
+              "Color": [0.14, 0.1, 0.2],
+              "Position": [0, 11, -240],
+              "Size": [80, 22, 1]
+            }
+          },
+          "WallEast": {
+            "$className": "Part",
+            "$properties": {
+              "Anchored": true,
+              "Locked": true,
+              "Material": "Concrete",
+              "Color": [0.14, 0.1, 0.2],
+              "Position": [40, 11, -200],
+              "Size": [1, 22, 80]
+            }
+          },
+          "WallWest": {
+            "$className": "Part",
+            "$properties": {
+              "Anchored": true,
+              "Locked": true,
+              "Material": "Concrete",
+              "Color": [0.14, 0.1, 0.2],
+              "Position": [-40, 11, -200],
+              "Size": [1, 22, 80]
+            }
+          },
+          "NeonStripNorth": {
+            "$className": "Part",
+            "$properties": {
+              "Anchored": true,
+              "Locked": true,
+              "CanCollide": false,
+              "Material": "Neon",
+              "Color": [0.7, 0.4, 1],
+              "Position": [0, 20, -160.4],
+              "Size": [78, 0.4, 0.2]
+            }
+          },
+          "NeonStripSouth": {
+            "$className": "Part",
+            "$properties": {
+              "Anchored": true,
+              "Locked": true,
+              "CanCollide": false,
+              "Material": "Neon",
+              "Color": [0.7, 0.4, 1],
+              "Position": [0, 20, -239.6],
+              "Size": [78, 0.4, 0.2]
+            }
+          },
+          "NeonStripEast": {
+            "$className": "Part",
+            "$properties": {
+              "Anchored": true,
+              "Locked": true,
+              "CanCollide": false,
+              "Material": "Neon",
+              "Color": [0.7, 0.4, 1],
+              "Position": [39.6, 20, -200],
+              "Size": [0.2, 0.4, 78]
+            }
+          },
+          "NeonStripWest": {
+            "$className": "Part",
+            "$properties": {
+              "Anchored": true,
+              "Locked": true,
+              "CanCollide": false,
+              "Material": "Neon",
+              "Color": [0.7, 0.4, 1],
+              "Position": [-39.6, 20, -200],
+              "Size": [0.2, 0.4, 78]
             }
           }
         },
-        "CornerLightNE": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "CanCollide": false,
-            "Transparency": 1,
-            "Position": [35, 6, -165],
-            "Size": [1, 1, 1]
-          },
-          "Light": {
-            "$className": "PointLight",
+        "Lights": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true,
+          "CeilingLight": {
+            "$className": "Part",
             "$properties": {
-              "Brightness": 2,
-              "Range": 25,
-              "Color": [0.4, 0.9, 1],
-              "Shadows": false
+              "Anchored": true,
+              "Locked": true,
+              "CanCollide": false,
+              "Transparency": 1,
+              "Position": [0, 20, -200],
+              "Size": [1, 1, 1]
+            },
+            "Light": {
+              "$className": "PointLight",
+              "$properties": {
+                "Brightness": 3,
+                "Range": 60,
+                "Color": [0.85, 0.7, 1],
+                "Shadows": false
+              }
+            }
+          },
+          "CornerLightNE": {
+            "$className": "Part",
+            "$properties": {
+              "Anchored": true,
+              "Locked": true,
+              "CanCollide": false,
+              "Transparency": 1,
+              "Position": [35, 6, -165],
+              "Size": [1, 1, 1]
+            },
+            "Light": {
+              "$className": "PointLight",
+              "$properties": {
+                "Brightness": 2,
+                "Range": 25,
+                "Color": [0.4, 0.9, 1],
+                "Shadows": false
+              }
+            }
+          },
+          "CornerLightSW": {
+            "$className": "Part",
+            "$properties": {
+              "Anchored": true,
+              "Locked": true,
+              "CanCollide": false,
+              "Transparency": 1,
+              "Position": [-35, 6, -235],
+              "Size": [1, 1, 1]
+            },
+            "Light": {
+              "$className": "PointLight",
+              "$properties": {
+                "Brightness": 2,
+                "Range": 25,
+                "Color": [1, 0.4, 0.85],
+                "Shadows": false
+              }
             }
           }
         },
-        "CornerLightSW": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "CanCollide": false,
-            "Transparency": 1,
-            "Position": [-35, 6, -235],
-            "Size": [1, 1, 1]
-          },
-          "Light": {
-            "$className": "PointLight",
+        "Signs": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true,
+          "RulesSign": {
+            "$className": "Part",
             "$properties": {
-              "Brightness": 2,
-              "Range": 25,
-              "Color": [1, 0.4, 0.85],
-              "Shadows": false
+              "Anchored": true,
+              "Locked": true,
+              "CanCollide": false,
+              "Material": "SmoothPlastic",
+              "Color": [0.05, 0.04, 0.08],
+              "Position": [0, 12, -160.7],
+              "Size": [22, 14, 0.4]
             }
           }
         },
-        "RulesSign": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "CanCollide": false,
-            "Material": "SmoothPlastic",
-            "Color": [0.05, 0.04, 0.08],
-            "Position": [0, 12, -160.7],
-            "Size": [22, 14, 0.4]
-          }
+        "SpawnPads": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
         },
-        "MatchStatusSign": {
-          "$className": "Part",
-          "$properties": {
-            "Anchored": true,
-            "Locked": true,
-            "CanCollide": false,
-            "Material": "SmoothPlastic",
-            "Color": [0.05, 0.04, 0.08],
-            "Position": [0, 12, -239.3],
-            "Size": [22, 10, 0.4]
-          }
-        },
-        "Decor": { "$path": "assets/lobby-decor.rbxm" }
-      },
-      "SpawnPads": {
-        "$className": "Folder",
-        "Spawn1": {
-          "$className": "SpawnLocation",
-          "$properties": {
-            "Anchored": true,
-            "Duration": 0,
-            "Transparency": 1,
-            "Color": [0.55, 0.5, 0.45],
-            "Position": [18, 0.75, -200],
-            "Size": [3, 0.5, 3]
-          }
-        },
-        "Spawn2": {
-          "$className": "SpawnLocation",
-          "$properties": {
-            "Anchored": true,
-            "Duration": 0,
-            "Transparency": 1,
-            "Color": [0.55, 0.5, 0.45],
-            "Position": [12.73, 0.75, -187.27],
-            "Size": [3, 0.5, 3]
-          }
-        },
-        "Spawn3": {
-          "$className": "SpawnLocation",
-          "$properties": {
-            "Anchored": true,
-            "Duration": 0,
-            "Transparency": 1,
-            "Color": [0.55, 0.5, 0.45],
-            "Position": [0, 0.75, -182],
-            "Size": [3, 0.5, 3]
-          }
-        },
-        "Spawn4": {
-          "$className": "SpawnLocation",
-          "$properties": {
-            "Anchored": true,
-            "Duration": 0,
-            "Transparency": 1,
-            "Color": [0.55, 0.5, 0.45],
-            "Position": [-12.73, 0.75, -187.27],
-            "Size": [3, 0.5, 3]
-          }
-        },
-        "Spawn5": {
-          "$className": "SpawnLocation",
-          "$properties": {
-            "Anchored": true,
-            "Duration": 0,
-            "Transparency": 1,
-            "Color": [0.55, 0.5, 0.45],
-            "Position": [-18, 0.75, -200],
-            "Size": [3, 0.5, 3]
-          }
-        },
-        "Spawn6": {
-          "$className": "SpawnLocation",
-          "$properties": {
-            "Anchored": true,
-            "Duration": 0,
-            "Transparency": 1,
-            "Color": [0.55, 0.5, 0.45],
-            "Position": [-12.73, 0.75, -212.73],
-            "Size": [3, 0.5, 3]
-          }
-        },
-        "Spawn7": {
-          "$className": "SpawnLocation",
-          "$properties": {
-            "Anchored": true,
-            "Duration": 0,
-            "Transparency": 1,
-            "Color": [0.55, 0.5, 0.45],
-            "Position": [0, 0.75, -218],
-            "Size": [3, 0.5, 3]
-          }
-        },
-        "Spawn8": {
-          "$className": "SpawnLocation",
-          "$properties": {
-            "Anchored": true,
-            "Duration": 0,
-            "Transparency": 1,
-            "Color": [0.55, 0.5, 0.45],
-            "Position": [12.73, 0.75, -212.73],
-            "Size": [3, 0.5, 3]
-          }
+        "Decor": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
         }
+      },
+      "Arena": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
       },
       "Chairs": {
         "$className": "Folder"

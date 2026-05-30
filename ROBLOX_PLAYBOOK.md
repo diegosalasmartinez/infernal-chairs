@@ -23,8 +23,14 @@ se aplican mal en los casos borde.
   todo el árbol. Úsalo como smoke test rápido tras tocar el JSON o agregar instancias.
 
 ### Por qué Rojo y no Studio puro
-Studio no versiona bien (`.rbxl` es binario, ilegible en diffs). Rojo deja el código en texto
-plano versionable.
+Rojo deja **código y configuración** en texto plano versionable (JSON + Luau). Studio sólo
+escribe `.rbxl` binario, ilegible en diffs. Pero hay un matiz importante: **el `.rbxl` también
+se versiona** en este tipo de proyecto, porque ciertas cosas (assets del Marketplace con
+propiedades binarias complejas) no sobreviven el ciclo `.rbxm` ↔ Rojo. Ver sección 4 para la
+decisión completa de qué vive dónde. La regla mental:
+- **Rojo es la fuente de verdad para código y geometría simple.**
+- **El `.rbxl` es la fuente de verdad para Marketplace assets, decor visual editado a mouse,
+  y cualquier instance con propiedades binarias del engine (PBR, CSG, MaterialVariant, etc.).**
 
 ---
 
@@ -91,10 +97,27 @@ mover-y-pegar.
    esa forma vale). **Workaround confiable**: declará el container (Part, Frame) en JSON con
    props primitivas, y construí el árbol de GUI (SurfaceGui, TextLabels, UDim2) en una función
    Luau. No pierdas horas peleando con el schema.
+6. **Rojo NO roundtripea propiedades binarias del engine.** Cuando una instance tiene
+   `MaterialVariantSerialized`, `AeroMeshData`, `MeshData`, `SurfaceAppearance` complejas, o
+   geometría CSG (`UnionOperation`), serializarla a `.rbxm` y volver a cargarla via Rojo
+   pierde data: texturas PBR se renderean con material default (los "bloques feos"), Unions
+   desaparecen, MeshParts pueden quedar desplazados. Esto **no es bug de Rojo per se** — es
+   que esas propiedades son blobs opacos que solo el engine de Roblox sabe interpretar. Rojo
+   las pasa pero algo se pierde en el ciclo. **Diagnóstico**: si un asset se ve bien al hacer
+   `Insert from File` directo en Studio pero feo cuando viene via Rojo, es este bug.
+   **Solución**: ese asset NO puede vivir en `.rbxm`, vive en el `.rbxl` (ver sección 4
+   Approach 4).
+7. **`$ignoreUnknownInstances: true` NO transfiere ownership al `.rbxl`.** Las Parts que Rojo
+   inyecta desde el JSON quedan "managed by Rojo" — al hacer Ctrl+S en Studio, esas Parts
+   **NO se persisten al `.rbxl`** (a menos que las hayas modificado manualmente, lo que las
+   marca como user-owned). Si después sacás esas Parts del JSON, **desaparecen para siempre**
+   aunque hayas hecho Save antes. Implicación: no podés "migrar gradualmente" sacando una
+   Part del JSON esperando que persista en el `.rbxl` — tenés que recrearla manualmente en
+   Studio (o hacer Cut+Paste para des-ligarla de Rojo) ANTES de sacarla del JSON.
 
 ---
 
-## 4. Las tres formas de construir contenido del mundo
+## 4. Las cuatro formas de construir contenido del mundo
 
 Esta es la decisión más importante a la hora de armar un mapa o agregar algo nuevo.
 Cada approach tiene un workflow distinto con Rojo y un nicho específico. Mezclarlos sin
@@ -129,64 +152,103 @@ criterio es donde más se pierde tiempo. La regla:
 - **Cons**: NO se ve en Studio sin darle Play (lo construye el server en runtime), ciclo
   de iteración más lento (cambiar código → re-Play → ver).
 
-### Approach 3 — `.rbxm` editado visualmente en Studio (Save to File)
-- **Cuándo**: decoración estática que querés posicionar/rotar **con el mouse**, no a ojo
-  con coordenadas. Ej.: los muebles del lobby (sofás, plantas, jukebox), props de
-  Marketplace, dressing visual. Cualquier cosa fija donde "ojímetro" + manipulador 3D
-  es mejor que adivinar números.
+### Approach 3 — `.rbxm` editado en Studio (Save to File del Folder/Model)
+- **Cuándo**: decoración estática **simple** (Parts crudas con Color/Material/Size) donde
+  querés versionarlo como archivo separado del `.rbxl` para que sea diffeable o reemplazable
+  por mueble. Pocos casos válidos en práctica.
+- **NO uses esto para Marketplace assets con propiedades complejas** (PBR, MaterialVariant,
+  CSG, AeroMeshData). El ciclo Studio Save → Rojo load **rompe la fidelidad visual**
+  (ver Rojo quirks #6 y #7). Para esos casos, Approach 4.
+- **Workflow** (sólo para assets simples):
+  1. Studio en Edit → click derecho sobre el Model → **Save to File** → `assets/<x>.rbxm`.
+  2. Declarás en `default.project.json` con `$path`: `"X": { "$path": "assets/x.rbxm" }`.
+  3. Reiniciás `rojo serve` y reconectás el plugin.
+- **Cons graves** que probablemente te empujen a Approach 4:
+  - **Save to File de un Folder con muchos Models pierde refs binarias** (texturas se ven
+    feas tras el roundtrip). Save to File de un Model único preserva mejor pero igual no
+    es 100% (algunas propiedades binarias se pierden o degradan).
+  - El `.rbxm` es binario — diffs ilegibles.
+
+### Approach 4 — `.rbxl` versionado (editado visualmente en Studio)
+- **Cuándo**: TODO lo que sea **Marketplace asset complejo, decor visual con mouse,
+  templates dinámicos para clonar en runtime, scene con MaterialVariants / SurfaceAppearance
+  / Unions**. En la práctica, **la mayoría del contenido visual del juego cae acá**.
 - **Workflow**:
-  1. En Studio (**modo Edit**, no Play) creás o editás el contenido. Si lo agrupás todo
-     en un Folder/Model contenedor, mejor.
-  2. Click derecho sobre el Folder/Model → **Save to File...** → guardás como
-     `assets/<nombre>.rbxm`.
-  3. Declarás en `default.project.json` con `$path`:
+  1. Asegurate de que `*.rbxl` y `*.rbxlx` **NO están en `.gitignore`** (versionalos).
+  2. En `default.project.json`, declarás los Folders padre con
+     `"$ignoreUnknownInstances": true` para que Rojo no destruya lo que metés adentro:
      ```json
-     "Decor": { "$path": "assets/lobby-decor.rbxm" }
+     "ReplicatedStorage": {
+       "Templates": { "$className": "Folder", "$ignoreUnknownInstances": true }
+     },
+     "Workspace": {
+       "Lobby": { "$className": "Folder", "$ignoreUnknownInstances": true, ... }
+     }
      ```
-  4. Reiniciás `rojo serve` (porque tocaste el project.json).
-  5. En Studio, **borrá el Folder manual** que creaste (si existía) — Rojo lo recrea
-     desde el `.rbxm` y si lo dejás manual quedan duplicados. Después **Disconnect →
-     Connect** y el Folder reaparece servido desde el `.rbxm`.
-- **Pros**: edición visual con manipuladores 3D, ves cambios al instante en Edit,
-  versionable como `.rbxm` binario (cabe en git), no requiere re-Play para ver cambios
-  offline.
+  3. En Studio (Edit) arrastrás del Toolbox al Folder. Posicionás, agrupás en sub-Folders.
+  4. **Ctrl+S** para persistir al `.rbxl`.
+  5. `git add infernal-chairs.rbxl && git commit`.
+- **Para clonar en runtime**: tu código hace
+  `local clone = ReplicatedStorage.Templates.X:Clone()`. El template llega con TODAS sus
+  propiedades intactas (porque vino del engine via el `.rbxl`, no via Rojo serializer).
+- **Pros**:
+  - Cualquier asset del Marketplace funciona perfecto (PBR, MaterialVariant, Unions, todo).
+  - Edición visual completa con manipuladores 3D.
+  - El "compraste un asset, lo dropeás, ya funciona" workflow.
 - **Cons**:
-  - **Los cambios en Play no se guardan**: si movés algo durante Play, al detenerlo se
-    pierde. Siempre editás en Edit mode, después Save to File.
-  - Hay que **acordarse de "Save to File"** cada vez que edites; los cambios no se
-    persisten automáticamente al filesystem (Rojo es unidireccional).
-  - El `.rbxm` es binario — los diffs no muestran qué cambió. Versionás "snapshots".
+  - `.rbxl` binario en git: diffs ilegibles, conflicts merge complicados (en equipo).
+  - Riesgo de borrar accidentalmente en Studio. **Mitigación**: si la cagás, cerrá Studio
+    SIN guardar y reabrí el `.rbxl` — el de disco no se sobreescribió.
+  - `git pull` trae cambios binarios que no podés revisar línea por línea.
+
+### Bonus: compensar pivots raros al posicionar por código
+Si tu código hace `Model:PivotTo(cf)` con templates del Marketplace, **el visible quedará
+desplazado** si el `WorldPivot` del template no está en el centro geométrico (varía por
+asset, y duplicarlos en Studio puede dejarlos peor). Solución robusta:
+
+```lua
+local bboxCf = model:GetBoundingBox()
+local pivotOffset = model:GetPivot().Position - bboxCf.Position
+model:PivotTo(cf + pivotOffset)   -- la geometría aterriza en cf
+```
+
+Esto compensa cualquier pivot raro. Evita pedirle al usuario "reseteá el pivot de cada
+template manualmente" — frágil, fácil de olvidar.
 
 ### ¿Cuál elijo? — decisión rápida
 
-| Pregunta | Si SÍ |
+| Pregunta | Approach |
 |---|---|
-| ¿Necesita lógica en runtime o responde a eventos? | **Approach 2** (código) |
-| ¿Deriva de un parámetro que querés reescalar? (`width = radius * 2`) | **Approach 2** (código) |
-| ¿Tiene UDim2 o tipos complejos para Rojo? | **Approach 2** (código) |
-| ¿Es decoración estática que querés mover con el mouse? | **Approach 3** (`.rbxm`) |
-| Si nada de lo anterior aplica — geometría fija primitiva | **Approach 1** (JSON) |
+| ¿Necesita lógica runtime o responde a eventos? | **2** (código) |
+| ¿Deriva de un parámetro que querés reescalar? (`width = radius * 2`) | **2** (código) |
+| ¿Tiene UDim2 o tipos complejos para Rojo? | **2** (código) |
+| ¿Es Marketplace asset con PBR / MaterialVariant / CSG? | **4** (`.rbxl`) |
+| ¿Querés moverlo visualmente con el mouse y no hace falta diff? | **4** (`.rbxl`) |
+| ¿Vas a clonarlo dinámicamente en runtime con `:Clone()`? | **4** (`.rbxl`, en `ReplicatedStorage.Templates`) |
+| ¿Es una primitiva fija (Color, Material, Position) muy simple? | **1** (JSON) |
+| ¿Querés versionar este asset específico como archivo separado del `.rbxl`? | **3** (`.rbxm`) — sólo si es simple |
 
-### Mezclar los tres en un solo nivel
-Lo común es **combinar los tres**. Ejemplo del proyecto Infernal Chairs:
-- **Arena shell** (paredes, techo, track, pillars, neon ring) → código (`World.buildArena`),
+### Mezclar approaches en un nivel
+Ejemplo del proyecto Infernal Chairs (post-refactor):
+- **Arena shell** (paredes, techo, track, pillars, neon ring) → **código** (`World.buildArena`),
   porque deriva de `ARENA_RADIUS`.
-- **Lobby shell** (paredes, piso, techo, luces ambientales) → JSON, porque es fijo.
-- **Lobby decor** (sofás, plantas, jukebox) → `.rbxm` editado en Studio, porque querés
-  arrastrar los muebles con el mouse.
-- **Signs** (RulesSign, MatchStatusSign): el Part en JSON + el SurfaceGui construido en
-  código (workaround de UDim2 en JSON).
-- **Disco ball**: viene de un `.rbxm` del Marketplace + posicionado por código en un
-  slot derivado de `ARENA_RADIUS`.
+- **Lobby shell** (paredes, neon, lights, RulesSign) → **JSON**, son Parts primitivas
+  fijas, queremos diff legible si cambia un color o tamaño.
+- **Lobby decor** (sofás, bar, mesas — Marketplace assets con PBR) → **`.rbxl`** dentro de
+  `Workspace.Lobby.Decor`.
+- **Templates para clonar en runtime** (Chair, DiscoBall) → **`.rbxl`** dentro de
+  `ReplicatedStorage.Templates`.
+- **SurfaceGuis de los signs** (UDim2 + tweens) → **código** (workaround del quirk #5).
+- **DiscoBall posicionado** → template en `.rbxl` (Approach 4) + posicionado por código
+  en slot derivado de `ARENA_RADIUS` (Approach 2), con pivot compensation.
 
 ### El loop diario con Rojo (resumen)
-Cuando hagas cambios, **el reflejo en Studio depende de qué tocaste**:
-| Edité | Necesito | Rojo recarga? | Studio recarga? | Play se actualiza solo? |
-|---|---|---|---|---|
-| `.luau` (módulo, init) | nada extra | sí, en caliente | sí, vía plugin | **NO** — re-Play (Shift+F5 → F5) |
-| `.rbxm` referenciado por `$path` | nada extra | sí | sí, vía plugin reconnect | **NO** — re-Play |
-| `default.project.json` | **reiniciar `rojo serve`** | no recarga solo | reconnect plugin | **NO** — re-Play |
-| Algo en Studio (manual) | **Save to File** del Folder/Model | n/a | ya está en Studio | n/a (estás en Edit) |
+| Edité | Rojo recarga? | Necesito | Play se actualiza solo? |
+|---|---|---|---|
+| `.luau` (módulo, init) | sí, en caliente | nada extra | **NO** — re-Play |
+| `default.project.json` | NO, hay que reiniciar | matar y volver a iniciar `rojo serve` + Disconnect/Connect | **NO** — re-Play |
+| Algo en Studio dentro de `$ignoreUnknownInstances` | n/a | **Ctrl+S** al `.rbxl` + git commit | n/a (estás en Edit) |
+| `.rbxm` referenciado por `$path` | sí | nada extra | **NO** — re-Play |
 
 Internalizar esta tabla ahorra horas de "¿por qué no veo mis cambios?".
 
@@ -339,6 +401,20 @@ matando el feel. Moverlo al cliente lo hizo instantáneo.
 - **Lobby separado del área de juego**: sala aparte donde los jugadores esperan y vuelven entre
   matches. El "teleport" al área puede ser implícito (el sistema que los posiciona al empezar
   ya los mueve). Para volver al lobby: `humanoid.Health = 0` fuerza respawn vía SpawnLocations.
+- **Templates dinámicos viven en `ReplicatedStorage.Templates`** (en el `.rbxl`, no en
+  `.rbxm`). El código clona con `:Clone()`. Funciona para cualquier asset del Marketplace
+  con fidelidad completa (PBR, MaterialVariant, etc.) porque no pasa por la serialización
+  de Rojo. Para spawneo: `local clone = ReplicatedStorage.Templates.X:Clone();
+  clone:PivotTo(cf); clone.Parent = workspace`.
+- **Esconder al startup lo que se posiciona en match**: si clonás templates al startup y
+  los movés sólo cuando arranca un match, **al spawnearlos quedan en el CFrame del template**
+  (que puede ser cualquier lado raro, ej. donde el creator del Marketplace lo dejó).
+  Llamá un `hideAll()` (Transparency=1 + CanCollide=false) inmediatamente después del
+  clone para que no se vean hasta que el game loop los reposicione.
+- **Organización jerárquica del Workspace**: dividir por zonas (Lobby, Arena) y dentro de
+  cada zona por rol (Shell, Lights, Signs, Decor, SpawnPads). Evita colisión de nombres
+  entre zonas (`Workspace.Lobby.Decor` vs `Workspace.Arena.Decor`) y deja el Explorer
+  navegable. El código accede via paths jerárquicos: `Workspace.Arena.Shell.Track`.
 
 ---
 
@@ -346,10 +422,48 @@ matando el feel. Moverlo al cliente lo hizo instantáneo.
 
 - **Chequeá el Marketplace antes de codear desde cero.** Muchas cosas (modelos, sonidos,
   texturas) ya existen gratis en el Toolbox.
-- **Bundleá como `.rbxm` en `assets/`** y cargalo vía Rojo `$path`. **No uses
-  `InsertService:LoadAsset` en runtime** — es HTTP en cada server start y depende de permisos
-  del asset. El `.rbxm` bundleado es instantáneo y self-contained.
-- Inspeccioná el asset antes de integrarlo (ver Rojo quirk #4).
+
+- **Vivlos en el `.rbxl`, NO en `.rbxm`.** Aprendido a las malas. Cualquier asset del
+  Marketplace con `MaterialVariant` / `SurfaceAppearance` / `AeroMeshData` / `UnionOperation`
+  pierde fidelidad visual cuando hace el roundtrip Studio Save → Rojo load (ver quirks #6 y
+  #7). El test definitivo: hacé `Insert from File` directo del asset en una scene vacía sin
+  Rojo — si se ve distinto de cómo se ve en tu juego vía Rojo, es el bug. Single-Part
+  assets sin PBR sí pueden vivir como `.rbxm`; cualquier otra cosa, al `.rbxl` directo:
+  - **Templates dinámicos** (los que clonás en runtime: sillas, props parametrizados) →
+    `ReplicatedStorage.Templates` en el `.rbxl`, declarado con `$ignoreUnknownInstances`.
+  - **Decor visual** (muebles del lobby, dressing) → `Workspace.X.Decor` en el `.rbxl`,
+    también con `$ignoreUnknownInstances`.
+
+- **NO uses `InsertService:LoadAsset` en runtime para Marketplace assets.** Es HTTP en
+  cada server start, depende de permission del asset, y agrega lag inicial. El `.rbxl`
+  con templates embebidos es instantáneo y self-contained.
+
+- **Anchorá defensivamente al cargar.** Los modelos del Marketplace mezclan `Part`,
+  `MeshPart`, `WedgePart`, `UnionOperation`, unidos con `Weld` legacy. Si alguna sub-part
+  queda con `Anchored = false`, al Play la física rompe los welds y el modelo se "desarma
+  como lego". Hacer un pase `for _, d in folder:GetDescendants() do if d:IsA("BasePart")
+  then d.Anchored = true end end` en una función `setup()` al startup. Aplicá esto al
+  Folder Decor del lobby (templates ya se anchora al clonar en el código de slot
+  placement).
+
+- **Pivot compensation al posicionar templates por código.** El `WorldPivot` de un
+  template del Marketplace está donde sea (depende del creator + cómo lo importaste). Si
+  hacés `Model:PivotTo(cf)` directo, la geometría aparece desplazada. Compensá con
+  bounding box (ver sección 4 Approach 4).
+
+- **Save to File de un Folder con varios Models pierde refs.** Si querés persistir como
+  `.rbxm`, guardá **Models individuales**, NO un Folder agregado. Pero en la práctica:
+  si el asset tiene propiedades binarias, usá `.rbxl` (Approach 4) y olvidá `.rbxm`.
+
+- **Recovery si la cagás en Studio.** Si borraste cosas accidentalmente o un cambio salió
+  mal, **NO hagas Ctrl+S** — cerrá Studio sin guardar y reabrí el `.rbxl`. El de disco no
+  se sobreescribió hasta el próximo Save. Te salvás de pánico.
+
+- **CSG Unions no roundtripean por `.rbxm`.** Los `UnionOperation` guardan geometría
+  procedural binaria que Rojo (y a veces hasta Studio mismo) pierden al serializar a
+  `.rbxm`. Si vas a usar Unions: o los dejás en el `.rbxl` (Approach 4), o los convertís
+  a `MeshPart` con el botón **Model → Solid Modeling → Convert to MeshPart** en Studio
+  reciente (preserva la geometría como mesh uploadeado a tu cuenta).
 
 ---
 
@@ -385,7 +499,16 @@ matando el feel. Moverlo al cliente lo hizo instantáneo.
 - [ ] `rokit init` + agregar Rojo, StyLua, Selene a `rokit.toml`
 - [ ] Crear `selene.toml` con `std = "roblox"` (evita los falsos positivos)
 - [ ] `default.project.json` con el árbol base + carpetas `src/server`, `src/client`, `src/shared`
+- [ ] **Decidir si `.rbxl` se versiona**: en la práctica, sí — la mayoría de proyectos
+      necesita Marketplace assets que no roundtripean por `.rbxm`. Sacar `*.rbxl`/`*.rbxlx`
+      del `.gitignore` desde el día 1. Dejar `*.rbxm`/`*.rbxmx` ignored si no los vas a usar.
+- [ ] Declarar `Workspace.X` y `ReplicatedStorage.Templates` con `$ignoreUnknownInstances:
+      true` en el JSON para que Studio sea editor visual de esos folders sin que Rojo los
+      pise.
 - [ ] `Config.luau` desde el día 1 (no hardcodear constantes sueltas)
-- [ ] Decidir geometría: fija → JSON, parametrizada → código
+- [ ] Decidir geometría por approach (sección 4): parametrizada → código; primitivas fijas
+      → JSON; Marketplace + visual → `.rbxl`.
 - [ ] Pensar el split server/client desde el diseño (¿qué necesita autoridad?)
 - [ ] Empezar con módulos por responsabilidad antes de que el `init` pase de ~500 líneas
+- [ ] Si vas a clonar templates en runtime: tenelos en `ReplicatedStorage.Templates` desde
+      el día 1, no en `.rbxm`.

@@ -1,83 +1,41 @@
--- Decor.luau — places optional Marketplace props into predefined slots in the
--- arena + lobby. The slots exist NOW (shown as labelled placeholders); dropping
--- in a real asset is then trivial:
---   1. Save the model as assets/<name>.rbxm
---   2. Declare it in default.project.json under ReplicatedStorage.Templates,
---      e.g.  "DiscoBall": { "$path": "assets/disco_ball.rbxm" }
---   3. Done — it auto-places into every slot whose `template` matches that name.
--- Slots without a matching template show a magenta placeholder + floating label
--- (toggle SHOW_PLACEHOLDERS) so you can see the intended layout while shopping.
--- Several slots can share one template (e.g. all four Speakers).
+-- Decor.luau — places Marketplace props at slots inside the arena.
+--
+-- Templates live in ReplicatedStorage.Templates (which is part of the .rbxl,
+-- NOT in assets/*.rbxm — Rojo can't roundtrip Marketplace assets with binary
+-- props like MaterialVariantSerialized/AeroMeshData; see ROBLOX_PLAYBOOK.md
+-- section 3 + 12). To add a new arena slot:
+--   1. Drop the Marketplace model into ReplicatedStorage.Templates in Studio.
+--   2. Add an entry to SLOTS below referencing that template name.
+--   3. Ctrl+S, then F5.
+--
+-- Slots with no matching template show a magenta placeholder + floating label
+-- (toggle SHOW_PLACEHOLDERS).
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(script.Parent.Config)
 
--- Props are cloned, anchored and positioned as-is. Cleaning the asset (removing
--- stray Sounds, unwanted scripts, etc.) is done manually in Studio before saving
--- the .rbxm — the code does not touch a prop's contents.
-
--- DEBUG: show a labelled marker at every slot that has no asset yet. Set false
--- once the arena/lobby are dressed (or to preview without the markers).
 local SHOW_PLACEHOLDERS = true
 
-local R = Config.ARENA_RADIUS
 local H = Config.ARENA_WALL_HEIGHT
-local P = Config.ARENA_PILLAR_RADIUS
 
--- Each slot: world position, yaw in degrees (facing), the Templates child name
--- to look for, and a human label. Only the ARENA lives here — its slots derive
--- from ARENA_RADIUS so they re-scale with the ring. Lobby decor (sofas, plants,
--- jukebox, etc.) is positioned visually in Studio and saved as a single .rbxm
--- (Workspace.Lobby.Decor → assets/lobby-decor.rbxm), because the lobby is fixed
--- size and you're better off dragging props with the mouse than guessing
--- coordinates.
+-- Each slot: world position, yaw + pitch in degrees (facing), the Templates
+-- child name to look for, and a human label. The ARENA decor is what lives
+-- here — slot positions derive from ARENA_RADIUS / WALL_HEIGHT / PILLAR_RADIUS
+-- so they re-scale with the ring. Lobby decor is edited visually in Studio
+-- inside Workspace.Lobby.Decor (lives in the .rbxl).
+--
+-- `floor = true` shifts the model up so its bbox bottom sits at slot.pos.Y
+-- (used for ground-standing props; not needed for ceiling-hung ones).
 local SLOTS = {
-	-- DiscoBall is the only slot positioned by pivot center (hangs from ceiling);
-	-- everything else uses `floor = true` so the bottom of the model's bounding
-	-- box sits exactly at slot.pos.Y (avoids buried/floating props regardless of
-	-- where each Marketplace model puts its pivot).
-	{ name = "DiscoBall", pos = Vector3.new(0, H - 5, 0), yaw = 0, template = "DiscoBall", label = "DISCO BALL" },
 	{
-		name = "DjBooth",
-		pos = Vector3.new(0, 0.5, R - 6),
-		yaw = 180,
-		template = "DjBooth",
-		label = "DJ BOOTH",
-		floor = true,
-	},
-	{
-		name = "SpeakerNE",
-		pos = Vector3.new(P - 6, 0.5, P - 6),
-		yaw = 225,
-		template = "Speaker",
-		label = "SPEAKER",
-		floor = true,
-	},
-	{
-		name = "SpeakerNW",
-		pos = Vector3.new(-(P - 6), 0.5, P - 6),
-		yaw = 135,
-		template = "Speaker",
-		label = "SPEAKER",
-		floor = true,
-	},
-	{
-		name = "SpeakerSE",
-		pos = Vector3.new(P - 6, 0.5, -(P - 6)),
-		yaw = 315,
-		template = "Speaker",
-		label = "SPEAKER",
-		floor = true,
-	},
-	{
-		name = "SpeakerSW",
-		pos = Vector3.new(-(P - 6), 0.5, -(P - 6)),
-		yaw = 45,
-		template = "Speaker",
-		label = "SPEAKER",
-		floor = true,
+		name = "DiscoBall",
+		pos = Vector3.new(0, H - 5, 0),
+		yaw = 0,
+		pitch = 90, -- model's natural axis points sideways; pitch it so it hangs down
+		template = "DiscoBall",
+		label = "DISCO BALL",
 	},
 }
 
@@ -89,14 +47,16 @@ local function placeTemplate(template, slot, parent)
 			descendant.Anchored = true
 		end
 	end
-	local cf = CFrame.new(slot.pos) * CFrame.Angles(0, math.rad(slot.yaw), 0)
+	local cf = CFrame.new(slot.pos) * CFrame.Angles(math.rad(slot.pitch or 0), math.rad(slot.yaw or 0), 0)
 	if model:IsA("Model") then
-		if not model.PrimaryPart then
-			model.PrimaryPart = model:FindFirstChildWhichIsA("BasePart")
-		end
-		if model.PrimaryPart then
-			model:PivotTo(cf)
-		end
+		-- compensate for templates whose WorldPivot is NOT at the bbox center.
+		-- Marketplace assets often have weird pivots (inherited from how they were
+		-- imported / duplicated in Studio). A naive PivotTo(cf) lands the *pivot*
+		-- at cf, but the visible geometry can be tens of studs away. We shift by
+		-- (pivot - bbox center) so the geometry lands at cf regardless of pivot.
+		local bboxCf = model:GetBoundingBox()
+		local pivotOffset = model:GetPivot().Position - bboxCf.Position
+		model:PivotTo(cf + pivotOffset)
 	elseif model:IsA("BasePart") then
 		model.CFrame = cf
 	end
@@ -166,13 +126,29 @@ local Decor = {}
 
 function Decor.build()
 	local templates = ReplicatedStorage:FindFirstChild("Templates")
-	local existing = Workspace:FindFirstChild("Decor")
+
+	-- find or create the Arena folder (declared in default.project.json with
+	-- $ignoreUnknownInstances so it exists already in steady state).
+	local arena = Workspace:FindFirstChild("Arena")
+	if not arena then
+		arena = Instance.new("Folder")
+		arena.Name = "Arena"
+		arena.Parent = Workspace
+	end
+
+	-- migration cleanup: prior structure had Workspace.Decor at the root.
+	local oldDecor = Workspace:FindFirstChild("Decor")
+	if oldDecor then
+		oldDecor:Destroy()
+	end
+
+	local existing = arena:FindFirstChild("Decor")
 	if existing then
 		existing:Destroy()
 	end
 	local folder = Instance.new("Folder")
 	folder.Name = "Decor"
-	folder.Parent = Workspace
+	folder.Parent = arena
 
 	for _, slot in SLOTS do
 		local template = templates and templates:FindFirstChild(slot.template)

@@ -1,13 +1,15 @@
--- World.luau — builds the static scene: the arena shell (from ARENA_RADIUS),
--- plus the lobby decor (rules sign, decorative chairs, ambient particles) and
--- the live match-status board. Extracted from init.server so the main loop
--- stays focused on game logic. None of this touches the game state — it's pure
--- scene construction, so it lives apart cleanly.
+-- World.luau — runtime scene setup.
+--   * Arena shell (Workspace.Arena.Shell): parametric geometry built from
+--     ARENA_RADIUS — walls, ceiling, track, pillars, neon ring, boundary.
+--   * Lobby signs (RulesSign, MatchStatusSign): attach SurfaceGui + labels.
+--     The Parts live in the .rbxl; we just wire up the UI here because Rojo
+--     UDim2 serialization in JSON is painful.
+--   * Lobby ambient particles: subtle floating motes.
+--   * Lobby decor (Workspace.Lobby.Decor): anchor pass so Marketplace welds
+--     don't drop sub-parts at Play.
 --
--- Usage from init.server:
---   local World = require(script.World)
---   World.build()                      -- run once at startup
---   World.updateMatchStatus("...")     -- update the lobby status board
+-- Lobby shell + decor itself lives in the .rbxl, edited visually in Studio.
+-- See ROBLOX_PLAYBOOK.md section 4 for the JSON vs code vs .rbxl decision matrix.
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -51,13 +53,40 @@ local function buildArena()
 		return part
 	end
 
-	-- floor disc: the cylinder players orbit over and chairs sit on. referenced
-	-- by the ice event via Workspace.Track, so keep that name + location.
-	local existingTrack = Workspace:FindFirstChild("Track")
-	if existingTrack then
-		existingTrack:Destroy()
+	-- Arena folder holds everything in the playing area: Shell (track, walls,
+	-- ceiling, lights, ring boundary) and Decor (DiscoBall, DjBooth, Speakers).
+	-- The Folder is declared in default.project.json with $ignoreUnknownInstances,
+	-- so we just findOrCreate it here.
+	local arena = Workspace:FindFirstChild("Arena")
+	if not arena then
+		arena = Instance.new("Folder")
+		arena.Name = "Arena"
+		arena.Parent = Workspace
 	end
-	makePart("Track", Workspace, {
+
+	-- migration cleanup: prior structure put Track and Room directly under Workspace.
+	-- delete any leftovers from old .rbxl snapshots so we don't end up with duplicates.
+	local oldTrack = Workspace:FindFirstChild("Track")
+	if oldTrack then
+		oldTrack:Destroy()
+	end
+	local oldRoom = Workspace:FindFirstChild("Room")
+	if oldRoom then
+		oldRoom:Destroy()
+	end
+
+	-- Shell holds the arena geometry (rebuilt every startup from ARENA_RADIUS).
+	local existingShell = arena:FindFirstChild("Shell")
+	if existingShell then
+		existingShell:Destroy()
+	end
+	local shell = Instance.new("Folder")
+	shell.Name = "Shell"
+	shell.Parent = arena
+
+	-- floor disc: the cylinder players orbit over and chairs sit on. referenced
+	-- by the ice event via Workspace.Arena.Shell.Track.
+	makePart("Track", shell, {
 		Shape = Enum.PartType.Cylinder,
 		Material = Enum.Material.Plastic,
 		Color = DEFAULT_TRACK_COLOR,
@@ -66,24 +95,16 @@ local function buildArena()
 		Size = Vector3.new(0.5, ARENA_TRACK_RADIUS * 2, ARENA_TRACK_RADIUS * 2),
 	})
 
-	local existingRoom = Workspace:FindFirstChild("Room")
-	if existingRoom then
-		existingRoom:Destroy()
-	end
-	local room = Instance.new("Folder")
-	room.Name = "Room"
-	room.Parent = Workspace
-
 	-- ceiling
-	makePart("Ceiling", room, {
+	makePart("Ceiling", shell, {
 		Material = Enum.Material.Concrete,
 		Color = Color3.new(0.07, 0.06, 0.1),
 		Position = Vector3.new(0, H, 0),
 		Size = Vector3.new(span, 1, span),
 	})
 
-	-- center light (referenced by the flickering event via Room.CenterLight)
-	local centerLight = makePart("CenterLight", room, {
+	-- center light (referenced by the flickering event via Arena.Shell.CenterLight)
+	local centerLight = makePart("CenterLight", shell, {
 		CanCollide = false,
 		Transparency = 1,
 		Position = Vector3.new(0, H * 0.8, 0),
@@ -107,7 +128,7 @@ local function buildArena()
 		{ name = "West", pos = Vector3.new(-R, H / 2, 0), size = Vector3.new(1, H, span) },
 	}
 	for _, wall in walls do
-		makePart("Wall" .. wall.name, room, {
+		makePart("Wall" .. wall.name, shell, {
 			Material = Enum.Material.Brick,
 			Color = wallColor,
 			Position = wall.pos,
@@ -122,7 +143,7 @@ local function buildArena()
 		{ name = "West", pos = Vector3.new(-ARENA_NEON_RADIUS, neonY, 0), size = Vector3.new(0.2, 0.4, span - 2) },
 	}
 	for _, strip in neonStrips do
-		makePart("NeonStrip" .. strip.name, room, {
+		makePart("NeonStrip" .. strip.name, shell, {
 			CanCollide = false,
 			Material = Enum.Material.Neon,
 			Color = neonColor,
@@ -142,7 +163,7 @@ local function buildArena()
 		{ name = "SW", pos = Vector3.new(-P, H / 2, -P), color = cyan },
 	}
 	for _, pillar in pillars do
-		local part = makePart("Pillar" .. pillar.name, room, {
+		local part = makePart("Pillar" .. pillar.name, shell, {
 			Material = Enum.Material.Neon,
 			Color = pillar.color,
 			Position = pillar.pos,
@@ -166,7 +187,7 @@ local function buildArena()
 	local segLength = (2 * math.pi * ringRadius / segments) * 1.05 -- slight overlap, no gaps
 	local boundary = Instance.new("Folder")
 	boundary.Name = "PlayBoundary"
-	boundary.Parent = room
+	boundary.Parent = shell
 	for i = 1, segments do
 		local angle = (i - 1) * (math.pi * 2 / segments)
 		local base = Vector3.new(math.cos(angle) * ringRadius, 0, math.sin(angle) * ringRadius)
@@ -192,13 +213,14 @@ local function buildArena()
 end
 
 local function setupRulesSign()
-	-- the Part `Workspace.Lobby.RulesSign` is declared in default.project.json.
+	-- the Part `Workspace.Lobby.Signs.RulesSign` is declared in default.project.json.
 	-- we attach the SurfaceGui + labels here so we don't have to fight Rojo's
 	-- UDim2 serialization in JSON.
 	local lobby = Workspace:FindFirstChild("Lobby")
-	local sign = lobby and lobby:FindFirstChild("RulesSign")
+	local signs = lobby and lobby:FindFirstChild("Signs")
+	local sign = signs and signs:FindFirstChild("RulesSign")
 	if not sign then
-		warn("[RulesSign] missing Workspace.Lobby.RulesSign: skipping setup")
+		warn("[RulesSign] missing Workspace.Lobby.Signs.RulesSign: skipping setup")
 		return
 	end
 	if sign:FindFirstChildOfClass("SurfaceGui") then
@@ -320,10 +342,12 @@ end
 local function setupMatchStatusSign()
 	-- live status board on the south wall of the lobby; updated via
 	-- World.updateMatchStatus as the game state changes (waiting/warmup/in-match).
+	-- the Part itself lives in the .rbxl (user-placed), expected under Lobby.Signs.
 	local lobby = Workspace:FindFirstChild("Lobby")
-	local sign = lobby and lobby:FindFirstChild("MatchStatusSign")
+	local signs = lobby and lobby:FindFirstChild("Signs")
+	local sign = signs and signs:FindFirstChild("MatchStatusSign")
 	if not sign then
-		warn("[MatchStatusSign] missing Workspace.Lobby.MatchStatusSign: skipping setup")
+		warn("[MatchStatusSign] missing Workspace.Lobby.Signs.MatchStatusSign: skipping setup (move it into Lobby/Signs in Studio)")
 		return
 	end
 	if sign:FindFirstChildOfClass("SurfaceGui") then
@@ -364,6 +388,23 @@ local function setupMatchStatusSign()
 	matchStatusValue = value
 end
 
+local function setupLobbyDecor()
+	-- Lobby decor (Marketplace furniture) lives in the .rbxl under
+	-- Workspace.Lobby.Decor. Anchor every BasePart defensively: many Marketplace
+	-- models use legacy Welds that can't hold sub-parts in place at Play —
+	-- without this pass they collapse "like Lego".
+	local lobby = Workspace:FindFirstChild("Lobby")
+	local decor = lobby and lobby:FindFirstChild("Decor")
+	if not decor then
+		return
+	end
+	for _, descendant in decor:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = true
+		end
+	end
+end
+
 local World = {}
 
 function World.build()
@@ -371,6 +412,7 @@ function World.build()
 	setupRulesSign()
 	setupLobbyAmbientParticles()
 	setupMatchStatusSign()
+	setupLobbyDecor()
 end
 
 function World.updateMatchStatus(text)

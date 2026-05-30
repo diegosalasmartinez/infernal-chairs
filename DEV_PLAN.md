@@ -12,32 +12,28 @@ El nombre "Infernal" viene de esa pérdida de control que vuelve la mecánica m�
 
 Si estás retomando este proyecto desde contexto cero:
 
-1. **Lee este file de arriba a abajo** — refleja el estado real del código y el roadmap.
-2. **Mira las memorias** en `~/.claude/projects/-Users-diegosalas-Documents-projects-infernal-chairs/memory/` — capturan los aprendizajes técnicos que no son obvios mirando el código (Rojo quirks, server/client split, FrictionWeight, marketplace policy).
-3. **El código vivo está partido en módulos** (refactor hecho — `init.server` quedó como orquestador delgado):
+1. **Lee este file de arriba a abajo** + leé **`ROBLOX_PLAYBOOK.md`** (lecciones reutilizables; secciones 3-4 son críticas para entender la arquitectura).
+2. **Estructura del proyecto** (post-refactor):
    - **Server** (`src/server/`):
-     - `init.server.luau` — game loop (state machine), sit, orbit, spectator, eliminación
-     - `Config.luau` — todas las constantes tunables (única fuente de verdad)
-     - `Events.luau` — definiciones de eventos (ice/mud/fog/flickering), factory con contexto
-     - `World.luau` — construcción de escena (arena shell desde `ARENA_RADIUS`, signs, partículas)
-     - `Decor.luau` — slots de props del **arena** (DiscoBall, DjBooth, Speakers), placeholders
+     - `init.server.luau` — game loop (state machine), sit, orbit, spectator, eliminación.
+     - `Config.luau` — todas las constantes tunables (fuente única).
+     - `Events.luau` — definiciones de eventos (ice/mud/fog/flickering), factory con contexto.
+     - `World.luau` — escena runtime: arena shell parametrizado desde `ARENA_RADIUS`, signs (SurfaceGui), partículas, anchored pass del lobby decor.
+     - `Decor.luau` — slot del arena (sólo DiscoBall ahora) con pivot compensation.
    - **Client** (`src/client/`):
-     - `init.client.luau` — bridges RemoteEvents → audio, SFX, fog particles
-     - `Hud.luau` — toda la UI (banner, countdown, eliminated overlay, welcome modal)
-   - **JSON**: `default.project.json` declara Baseplate, Lobby (shell + signs + lobby-decor), SpawnPads, Chairs.
-   - **Assets `.rbxm`** (bundled del Marketplace, sin scripts maliciosos, sin Sounds autoplay):
-     - `chair.rbxm` — silla del juego (también usada para los signs decorativos antes, ya no)
-     - `disco-ball.rbxm` — el disco ball del arena (con scripts de rotación + parpadeo benignos)
-     - `dj-table.rbxm`, `speaker.rbxm`, `couch.rbxm`, `juke-box.rbxm`, `plant.rbxm` — props
-     - `lobby-decor.rbxm` — el Folder con los muebles del lobby, editado **visualmente en Studio** (ver workflow abajo)
-     - `ice.rbxm` — asset del piso de hielo del evento ice
-4. **Para jugar**: `rojo serve` desde la raíz, plugin Rojo en Studio → Connect, abrir el `.rbxl`, F5.
-5. **Loop diario con Rojo** (importante — qué requiere reiniciar qué):
-   - Edité `.luau` o `.rbxm` → solo **re-Play** (Shift+F5 → F5). Rojo y Studio sincronizan solos.
-   - Edité `default.project.json` → **reiniciar `rojo serve`** (matar y volver a iniciar) + Disconnect/Connect plugin + re-Play.
-   - Edité el lobby decor en Studio (mover/agregar muebles) → click derecho en `Workspace.Lobby.Decor` → **Save to File** → sobreescribir `assets/lobby-decor.rbxm`. Después reiniciar rojo + reconnect + re-Play.
-   - **Tres formas de construir contenido**: ver `ROBLOX_PLAYBOOK.md` sección 4 — JSON / código / `.rbxm` Save-to-File, con tabla de decisión.
-6. **Próximo paso recomendado**: ver sección [Próximos pasos](#próximos-pasos--orden-recomendado). Hoy lo más alto en prioridad: terminar de decorar el lobby (agregar más muebles al `.rbxm`) y/o **Fase 13 (DataStore)** / **Fase 14 (más eventos)**.
+     - `init.client.luau` — bridges RemoteEvents → audio, SFX, fog particles.
+     - `Hud.luau` — toda la UI (banner, countdown, eliminated overlay, welcome modal).
+   - **JSON** (`default.project.json`): geometría primitiva fija del Lobby (Walls, NeonStrips, Lights, RulesSign), Baseplate. Templates y Decor declarados como Folders vacíos con `$ignoreUnknownInstances: true` para que vivan en el `.rbxl`.
+   - **`.rbxl` versionado** (`infernal-chairs.rbxl`): templates del Marketplace + lobby decor + Floor/Ceiling del lobby + MatchStatusSign + SpawnLocations. Todo lo que tiene `MaterialVariant`/`SurfaceAppearance`/`AeroMeshData`/binarios complejos vive acá porque Rojo no roundtripea bien esas propiedades por `.rbxm` (ver Playbook §3 quirks 6-7).
+3. **Para jugar**: `rojo serve` desde la raíz, plugin Rojo en Studio → Connect, abrir `infernal-chairs.rbxl`, F5.
+4. **Loop diario con Rojo**:
+   - Edité `.luau` → re-Play (Shift+F5 → F5). Rojo sincroniza solo.
+   - Edité `default.project.json` → **reiniciar `rojo serve`** + Disconnect/Connect plugin + re-Play.
+   - Edité algo visual en Studio (lobby decor, templates) → **Ctrl+S** al `.rbxl` + `git commit`. No requiere reiniciar Rojo.
+   - **NUNCA** uses Save to File a `.rbxm` para Marketplace assets — pierde texturas. Vive en el `.rbxl`.
+   - Ver Playbook §4 ("loop diario") para la tabla completa.
+5. **Si la cagás en Studio** (borraste algo accidental, los muebles se ven raros): cerrá Studio **sin guardar** y reabrí el `.rbxl`. El de disco no se sobreescribió hasta el próximo Ctrl+S.
+6. **Próximo paso**: Fase 13 (DataStore) o Fase 14 (más eventos). Ver [Próximos pasos](#próximos-pasos--orden-recomendado).
 
 ---
 
@@ -106,12 +102,12 @@ Cuando la música para, los jugadores corren y presionan **E** cerca de una sill
 
 Sala con paredes y techo, ambiente nocturno-discoteca. Profundidad visual con `Atmosphere` sutil.
 
-- ✅ `Workspace.Room`: Ceiling (Y=30) + 4 paredes (X/Z = ±70), `SmoothPlastic` color púrpura oscuro
+- ✅ `Workspace.Arena.Shell`: Ceiling + 4 paredes parametrizados desde `ARENA_RADIUS`, `SmoothPlastic` color púrpura oscuro
 - ✅ `Lighting`: `ShadowMap` technology (mejor que Voxel, carga instantánea)
 - ✅ `Atmosphere` con haze sutil
-- ✅ `CenterLight`: PointLight en (0, 25, 0) con Range 80, ilumina toda la pista
-- ✅ Asset de silla cargado desde `assets/chair.rbxm` vía Rojo `$path` (sin HTTP runtime, todo bundled)
-- ✅ Track más grande (radio 54), spawns alineados al borde de la órbita
+- ✅ `CenterLight`: PointLight, ilumina toda la pista (referenciado por el evento `flickering`)
+- ✅ Asset de silla cargado desde `ReplicatedStorage.Templates.Chair` (en el `.rbxl`, NO en `.rbxm` — ver Fase 12.6 para la razón)
+- ✅ Track más grande, spawns alineados al borde de la órbita
 - ✅ `StreamingEnabled = false` (mapa chico, sin necesidad de streaming)
 - ✅ `HttpService.HttpEnabled = true` declarado en JSON para que el plugin Rojo conecte
 - ✅ Material/Track friction defaults guardados como constantes (para que eventos puedan modificarlos y restaurar)
@@ -177,25 +173,94 @@ Añadidos para resolver el problema "ni bien joineás te mete al match" y dejar 
 - Stands de Robux / Season Pass — pertenece a Fase 15.
 - Extraer `EVENTS` a `Events.luau` — sigue siendo solo 4 eventos; postpuesto hasta 6+.
 
-### Fase 12.6 · Decoración con assets del Marketplace — ✅ done (loop continuo)
+### Fase 12.6 · Decoración con assets del Marketplace — ✅ done (con refactor doloroso)
 
-Se trajeron props del Toolbox para vestir arena + lobby. Dos mecanismos distintos según el tipo de decoración:
+Esta fase tuvo dos iteraciones. La primera (approach `assets/*.rbxm` + `$path`) terminó
+rompiéndose por bugs de Rojo con propiedades binarias del engine. La segunda (approach
+`.rbxl` versionado) es la actual. Vale la pena documentar ambas para no repetir el camino.
 
-- ✅ **Slots del arena (parametrizados por código)**: `Decor.luau` define slots cuyas posiciones derivan de `Config.ARENA_RADIUS`, `ARENA_WALL_HEIGHT`, `ARENA_PILLAR_RADIUS`. Cuando un template existe en `ReplicatedStorage.Templates` (declarado en `default.project.json` con `$path`), el slot se llena con ese modelo; si no, muestra un **placeholder magenta con etiqueta** (controlado por `SHOW_PLACEHOLDERS`). Slots actuales: `DiscoBall` (centro del techo), `DjBooth` (pared norte), `Speaker` × 4 (esquinas). Flag `floor = true` en el slot ajusta automáticamente el Y para que el bottom del bounding box del modelo quede en `slot.pos.Y` (independiente de dónde el modelo tenga su pivot — Marketplace los pone en cualquier lado).
+#### Iteración 1 (deprecada) — `.rbxm` + `$path` ❌
 
-- ✅ **Lobby decor (editado visualmente en Studio)**: en vez de slots con coordenadas a dedo, los muebles del lobby viven en un `.rbxm` (`assets/lobby-decor.rbxm`) editado a mano. Workflow:
-  1. En Studio (modo Edit), `Workspace.Lobby.Decor` se sincroniza desde el `.rbxm` vía Rojo.
-  2. Para agregar/mover muebles: duplicar templates de `ReplicatedStorage.Templates`, arrastrarlos al Folder `Decor`, posicionar con el mouse.
-  3. Click derecho en `Decor` → **Save to File** → sobreescribir `assets/lobby-decor.rbxm`.
-  4. Reiniciar `rojo serve` + Disconnect/Connect del plugin + F5.
+El primer intento: bajar cada asset del Marketplace, guardarlo como `assets/<nombre>.rbxm`,
+declararlo en `default.project.json` con `$path`. Para los muebles del lobby, agregarlos
+todos en un `Folder` Decor en Studio y hacer Save to File a `assets/lobby-decor.rbxm`.
 
-- ✅ **Limpieza manual del asset al importar**: el código NO toca los contenidos de los `.rbxm` (no destruye Sounds, no borra scripts). Vos abrís el asset en Studio, borrás manualmente lo que no querés (Sounds autoplay, scripts maliciosos), después Save to File. El playbook tiene un checklist específico para este flujo. **Razón**: borrar todo a ciegas en código rompe props que legítimamente necesitan scripts (como la rotación del disco ball). El asset que ves en el `.rbxm` es lo que aparece en el juego — sin magia oculta.
+**Por qué se cayó**: Rojo NO roundtripea bien propiedades binarias del engine (ver Playbook
+§3 quirk 6). Específicamente:
+- `MaterialVariantSerialized` (texturas PBR de los couches): el asset `8851439806` se
+  preservaba en `couch.rbxm` original pero se corrompía a `2035360759` (otro asset random)
+  cuando guardabas el lobby-decor entero como Folder agregado. Visualmente: la textura
+  linda del Marketplace se reemplazaba por "bloques feos" default.
+- `UnionOperation` (CSG): la geometría procedural se perdía al ciclo. Bars del Marketplace
+  con Unions aparecían incompletos al recargar.
+- `AeroMeshData` y otros blobs binarios: similar.
 
-- ✅ **Bug clave aprendido (PlayOnRemove)**: si un Sound tiene `PlayOnRemove = true`, hacer `:Destroy()` lo **dispara** en vez de silenciarlo. Si vas a destruir Sounds en código, setear `PlayOnRemove = false` ANTES de destruirlos. Sino dejá el Sound vivo con `Volume = 0`/`Playing = false`.
+Diagnóstico definitivo: hacer `Insert from File` directo del `.rbxm` en Studio (sin Rojo)
+mostraba el asset OK. Vía Rojo, no. Concluimos: no es bug de Studio Save, es bug de Rojo
+deserializing. Y no hay versión más nueva de Rojo que lo arregle — los issues en el repo
+de Rojo están marcados "external" (problema upstream de `rbx-dom`).
 
-- ✅ **Lección sobre Rojo + Studio**: el server-side code (Decor.build, etc.) **no se re-ejecuta** cuando Rojo sincroniza un cambio en el filesystem — solo al re-Play. Eso explica el clásico "edité X y no veo el cambio aún": reconectar el plugin actualiza el árbol estático, pero los Scripts ya corriendo no se reinician. Ver tabla de "loop diario con Rojo" en Quick start.
+#### Iteración 2 (actual) — `.rbxl` versionado ✅
 
-Assets bundleados hasta ahora: `disco-ball`, `dj-table`, `speaker`, `couch` (Sofa), `juke-box` (Jukebox), `plant`. Falta seguir agregando muebles al `lobby-decor.rbxm` (más sofás, plantas, mesas, cuadros, etc.) — workflow loop continuo.
+Cambio arquitectónico: **todos los assets del Marketplace viven en el `.rbxl` versionado en
+git**, no en `.rbxm`. Rojo declara los Folders padre con `$ignoreUnknownInstances: true`
+así no toca el contenido, y Ctrl+S en Studio persiste todo al `.rbxl`.
+
+- ✅ **`*.rbxl` removido del `.gitignore`**, ahora se versiona. El `.rbxl` es binario (diffs
+  ilegibles), pero clone-and-play funciona y los assets sobreviven intactos.
+- ✅ **`assets/` carpeta borrada entera** — ya no se usa nada de filesystem para Marketplace.
+- ✅ **`ReplicatedStorage.Templates`** ahora vive en el `.rbxl` (declarado con
+  `$ignoreUnknownInstances`). Contiene `Chair`, `DiscoBall`. Ya no están DjBooth y Speaker
+  porque se sacaron del arena (decisión de diseño). Para clonar en runtime, el código hace
+  `ReplicatedStorage.Templates.X:Clone()` y todas las propiedades llegan intactas.
+- ✅ **`Workspace.Lobby.Decor`** vive en el `.rbxl` (declarado con `$ignoreUnknownInstances`).
+  Editás visualmente en Studio, Ctrl+S, git commit. Texturas perfectas.
+- ✅ **Slot del arena** (`Decor.luau`): único slot `DiscoBall`, posicionado por código desde
+  `ARENA_RADIUS / ARENA_WALL_HEIGHT`. Si el template falta, placeholder magenta.
+
+#### Lecciones del refactor (graves)
+
+- ✅ **Save to File de un Folder agregado pierde refs binarias.** Si insistís en `.rbxm`, al
+  menos guardá Models individuales (uno por archivo). Pero realmente: para Marketplace
+  assets, usá `.rbxl` y olvidá `.rbxm`.
+
+- ✅ **`$ignoreUnknownInstances` NO transfiere ownership al `.rbxl`** (Playbook §3 quirk 7).
+  Las Parts inyectadas por Rojo desde el JSON quedan "managed by Rojo" — si las sacás del
+  JSON esperando que persistan en el `.rbxl`, se borran de Studio aunque hayas hecho
+  Ctrl+S. Solo las Parts que vos modificás o creás explícitamente se persisten. Esto nos
+  hizo perder buena parte del lobby shell en una iteración intermedia — recovery: cerrar
+  Studio sin guardar y reabrir.
+
+- ✅ **Pivot compensation con `GetBoundingBox`** (`Decor.luau:placeTemplate`): el
+  `WorldPivot` de templates del Marketplace está donde sea (depende del creator + cómo lo
+  duplicaste/moviste en Studio). En lugar de confiar en eso, el código calcula
+  `offset = pivot.Position - bboxCenter.Position` y hace `PivotTo(targetCf + offset)` para
+  que el centro geométrico aterrice en el slot. Funciona para cualquier template, no hay
+  que pedirle al usuario "Reset Pivot" manualmente.
+
+- ✅ **Esconder templates al startup**: el código clona Chairs al startup pero las posiciona
+  recién cuando empieza el match. Si no las ocultabas, aparecían visibles en el CFrame del
+  template (que coincidía con el lobby porque ahí las dropeé al importar). Fix:
+  `hideAllChairs()` justo después de `cloneChairsFromTemplate()` en el bootstrap.
+
+- ✅ **Bug clave aprendido (lobby decor se desmorona en Play)**: el lobby decor se monta del
+  `.rbxl` directamente; si alguna sub-part tiene `Anchored = false`, los Welds legacy de
+  los modelos del Marketplace no aguantan y el modelo se "desarma como lego" al Play.
+  Fix: `World.setupLobbyDecor()` recorre el Folder y anchora cada BasePart.
+
+- ✅ **Bug aprendido (PlayOnRemove)**: si un Sound tiene `PlayOnRemove = true`, hacer
+  `:Destroy()` lo **dispara** en vez de silenciarlo. Setear `PlayOnRemove = false` ANTES de
+  destruirlo, o dejarlo vivo con `Volume = 0`.
+
+- ✅ **Convert to MeshPart** para Unions: si tenés que conservar un asset con `UnionOperation`
+  y vas a guardarlo a `.rbxm`, en Studio reciente: **Model → Solid Modeling → Convert to
+  MeshPart**. Uploadea el mesh a tu cuenta y reemplaza el Union con un MeshPart estable.
+  Pero en general: dejá el Union en el `.rbxl` (Approach 4) y evitá el ciclo.
+
+- ✅ **Lección sobre Rojo + Studio**: el server-side code (`Decor.build`, etc.) **no se
+  re-ejecuta** cuando Rojo sincroniza un cambio en el filesystem — solo al re-Play.
+  Reconectar el plugin actualiza el árbol estático, los Scripts ya corriendo no se
+  reinician.
 
 ### Fase 12 · Lobby liviano — ✅ done
 
@@ -204,7 +269,7 @@ Sala separada del arena (al sur, a `z = -200`) donde los players spawnean y vuel
 - ✅ **Spawn area separada**: `Workspace.Lobby` (Folder) con `Floor/Ceiling/Walls/AmbientLight` formando una sala 80×22×80 centrada en `(0, _, -200)`. Los 8 SpawnLocations se movieron a un anillo de radio 18 dentro del lobby (Roblox respawnea ahí automáticamente).
 - ✅ **Teleport implícito al arena**: no hace falta código nuevo — al empezar `Playing`, `freezeAllActives()` ya pone a cada activo en una posición orbital, lo que efectivamente los teletransporta del lobby al arena.
 - ✅ **Respawn al lobby al fin del match**: después de `task.wait(POST_MATCH_SECS)`, el server mata a todos los `Humanoid`s sobrevivientes → Roblox los respawnea vía `SpawnLocations` (que ahora viven en el lobby). `matchInProgress = false` en ese momento, así que `applySpectatorState` no los manda al ring del arena.
-- ✅ **Decoración** (cambió a un mejor approach — ver Fase 12.6): inicialmente 3 sillas decorativas clonadas en código. Después se reemplazó por el sistema de **lobby-decor.rbxm editado en Studio** porque editar muebles con coordenadas a dedo era frustrante; con el `.rbxm` Save-to-File los movés con el mouse. El `RulesSign` y `MatchStatusSign` siguen donde estaban (pegados a las paredes norte/sur respectivamente).
+- ✅ **Decoración** (evolución completa en Fase 12.6): inicialmente sillas clonadas por código → después `lobby-decor.rbxm` Save-to-File → finalmente **`.rbxl` versionado** con muebles dentro de `Workspace.Lobby.Decor` (con `$ignoreUnknownInstances` para que Rojo no los pise). Cada paso fue por dolor real: el primero era frustrante de editar, el segundo perdía texturas PBR. El `RulesSign` y `MatchStatusSign` siguen pegados a las paredes norte/sur.
 - ✅ **Música del lobby**: `Config.LOBBY_MUSIC_TRACKS` (array separado del match music, vacío por default — pegá un SoundId del marketplace para activarlo). `playLobbyMusic()` se dispara al entrar a Waiting y a Reset; el cliente solo cambia `Music.SoundId` si difiere del actual (no reset si ya está tocando el mismo).
 - ✅ **Counter de players**: SKIP. La PlayerList nativa de Roblox (arriba a la derecha) ya muestra todos los players con sus nombres; el banner ya muestra "WAITING FOR PLAYERS X/MIN_PLAYERS" durante Waiting. No vale la pena un counter custom encima — sería redundante.
 
@@ -286,13 +351,18 @@ Pendiente si crece: un `ChairService` (sillas + lógica de sit están acopladas 
 
 ## Decisiones tomadas que vale la pena recordar
 
-### Por qué Rojo y no Studio puro
+### Por qué Rojo + `.rbxl` versionado (no Studio puro, tampoco Rojo puro)
 
-Studio no versiona bien (`.rbxl` es binario). Rojo mantiene la fuente de verdad en archivos de texto (JSON + Luau).
+Rojo mantiene código y configuración primitiva como texto plano versionable (JSON + Luau).
+Pero **Rojo no roundtripea bien Marketplace assets con propiedades binarias** (PBR,
+MaterialVariant, CSG, AeroMeshData) — esos viven en el `.rbxl` versionado. Hybrid approach.
+Ver Playbook §3 (quirks 6 y 7) + §4 para la decisión completa de qué vive dónde.
 
 ### Sync de una sola vía (filesystem → Studio)
 
-Por default Rojo es unidireccional. Two-way sync es frágil, lo evitamos. Convención: el código edita, Studio renderiza.
+Por default Rojo es unidireccional. Two-way sync es frágil, lo evitamos. Convención:
+- **Código y geometría primitiva** → editás en filesystem (Rojo sync a Studio).
+- **Marketplace assets + decor visual** → editás en Studio (Ctrl+S al `.rbxl`).
 
 ### Sillas: Model + Seat + ProximityPrompt + WeldConstraint
 
@@ -311,9 +381,17 @@ Server: state machine, autoridad de quién está activo/sentado/eliminado, orbit
 
 Roblox moderno usa `JumpHeight` (default 7.2), no `JumpPower`. Setear solo `JumpPower=0` no impide saltar. Para freezar el salto hay que setear los dos + `humanoid:SetStateEnabled(Jumping, false)` + `AutoJumpEnabled = false` + listener en `Sit` que re-sienta si flippea.
 
-### Sillas declaradas en JSON, hijos cargados desde `.rbxm`
+### Sillas declaradas en JSON, hijos clonados desde `ReplicatedStorage.Templates`
 
-Carpeta `Chairs` vacía en JSON. El template viene de `assets/chair.rbxm` cargado por Rojo en `ReplicatedStorage.Templates.Chair`. Server clonea 4 veces al startup. **No usamos `InsertService:LoadAsset`** porque era HTTP cada server start — el .rbxm bundled es instantáneo y no depende de permisos del asset.
+Carpeta `Workspace.Chairs` vacía en JSON. El template `Chair` vive en
+`ReplicatedStorage.Templates` (en el `.rbxl` versionado, NO en filesystem `.rbxm`). Server
+clonea N veces al startup (`cloneChairsFromTemplate`), las oculta inmediatamente con
+`hideAllChairs()`, y el game loop las posiciona en el arena cuando empieza el match.
+
+**No usamos `InsertService:LoadAsset`** porque era HTTP en cada server start y depende de
+permission del asset. **Tampoco usamos `assets/chair.rbxm`** porque Rojo no roundtripea
+correctamente las propiedades binarias de los Marketplace assets (Playbook §3 quirk 6).
+Vivir en el `.rbxl` da fidelidad visual completa y clone-and-play sin HTTP.
 
 ### Lighting Technology = `ShadowMap`
 
@@ -338,9 +416,19 @@ Las secciones del módulo:
 - **Audio**: `MUSIC_TRACKS`, `LOBBY_MUSIC_TRACKS`, `STOP_SFX_ID`, `ELIMINATE_SFX_ID` (+ volúmenes)
 - **Events**: `FORCE_EVENT` (debug), `ICE_TRACK_COLOR`, `ICE_WALK_SPEED`, `SLOW_FLOOR_WALK_SPEED`, `MUD_PATCH_*` (count/ring derivados del `ORBIT_RADIUS`)
 
-### Por qué el arena se construye en código y el lobby en JSON
+### Por qué el arena se construye en código y el lobby está mixto
 
-El arena tiene que **reescalarse desde un solo número** (`ARENA_RADIUS`), y JSON es estático (no computa). Así que `buildArena()` arma track + paredes + techo + pillars + neon + centerlight derivados de las constantes. El **lobby** se queda en `default.project.json` porque es de tamaño fijo (no se reescala) y declararlo en JSON es más directo. Convención: geometría que deriva de un parámetro → código; geometría fija → JSON. El `fog` (partículas) y los signos (`RulesSign`/`MatchStatusSign`, por el quirk de UDim2 en JSON) también se arman en código.
+El arena **se reescala desde un solo número** (`ARENA_RADIUS`), y JSON es estático (no
+computa). Así que `World.buildArena()` arma Track + paredes + techo + pillars + neon +
+center light derivados de las constantes, todo bajo `Workspace.Arena.Shell`. El **arena
+decor** (DiscoBall) lo arma `Decor.build()` posicionando templates en `Workspace.Arena.Decor`.
+
+El **lobby** es mixto:
+- **Shell primitivo** (Walls, NeonStrips, Lights, RulesSign): en JSON, porque es fijo y
+  diffeable como texto.
+- **Decor + signs interactivos + SpawnPads + Floor/Ceiling editados**: en el `.rbxl`,
+  dentro de `Workspace.Lobby.Decor` y otros sub-folders. Editás visualmente con Ctrl+S.
+- Los `SurfaceGui` de los signs se arman en código (workaround del quirk de UDim2 en JSON).
 
 ## Idle entre matches
 
@@ -351,32 +439,32 @@ Cuando termina un match, el server hace cleanup completo (`runEventHook("onRound
 ## Estado actual y próximos pasos concretos (snapshot al cambiar de PC)
 
 ### ✅ Lo que está terminado y funcionando
-- Core completo: state machine de match (Waiting → Warmup → Intermission → Playing → Stopped → Judgement → Winner → Reset), sit lock, orbit forzado, spectator ring, eliminación.
+- Core completo: state machine (Waiting → Warmup → Intermission → Playing → Stopped → Judgement → Winner → Reset), sit lock, orbit forzado, spectator ring, eliminación.
 - 4 eventos de ronda: `flickering`, `ice`, `mud`, `fog`. Sistema extensible (factory con contexto en `Events.luau`).
-- UI completa: banner, countdown, eliminated overlay, welcome modal, todos en `Hud.luau`.
-- Lobby con sala separada, SpawnPads, RulesSign, MatchStatusSign, partículas ambientales.
-- Arena parametrizada (todo deriva de `ARENA_RADIUS = 100` en Config).
-- Anillo de neón + barrera invisible en el borde del playfield (los activos no pueden salir).
+- UI completa: banner, countdown, eliminated overlay, welcome modal — todo en `Hud.luau`.
+- Lobby con sala separada (sub-folders Shell, Lights, Signs, SpawnPads, Decor), RulesSign + MatchStatusSign con SurfaceGui dinámico, partículas ambientales.
+- Arena parametrizada bajo `Workspace.Arena.Shell` (todo deriva de `ARENA_RADIUS = 100`); decor del arena en `Workspace.Arena.Decor` (sólo DiscoBall).
+- Anillo de neón + barrera invisible en el borde del playfield (activos no pueden salir).
 - Refactor modular: `init.server` 1416 → 888 líneas; `init.client` 452 → 124 líneas. Módulos: `World`, `Events`, `Decor`, `Hud`, `Config`.
-- Decoración Marketplace: `disco-ball`, `dj-table`, `speaker`, `couch`, `juke-box`, `plant` bundleados. Arena slots vía `Decor.luau`; lobby vía `lobby-decor.rbxm` editado en Studio (workflow Save-to-File).
+- **Migración a `.rbxl` versionado**: todos los Marketplace assets viven ahí (Templates + lobby decor). Carpeta `assets/` borrada. Rojo declara los Folders padre con `$ignoreUnknownInstances: true`. Pivot compensation en `Decor.placeTemplate`, anchor pass en `World.setupLobbyDecor`, `hideAllChairs()` al startup, cleanup defensivo de paths viejos.
 
 ### 🔄 In progress / loop continuo (no urgente)
-- **Seguir decorando el lobby**: el `lobby-decor.rbxm` arrancó con un sofá. Cuando quieras, agregás más muebles en Studio (más sofás, plantas, jukebox, mesas, cuadros, etc.), Save to File, listo. El workflow está documentado en Quick start + Playbook sección 4.
-- **Llenar SoundIds vacíos**: en `Config.luau` las constantes `STOP_SFX_ID`, `ELIMINATE_SFX_ID`, `LOBBY_MUSIC_TRACKS = {}`. Cuando subas/elijas assets de audio del Marketplace, pegás los IDs y se activan automáticamente (sin tocar código).
+- **Seguir decorando el lobby**: en Studio, drag-and-drop muebles del Toolbox a `Workspace.Lobby.Decor`. Ctrl+S, git commit. Listo.
+- **Llenar SoundIds vacíos**: en `Config.luau`, `STOP_SFX_ID`, `ELIMINATE_SFX_ID`, `LOBBY_MUSIC_TRACKS = {}`. Cuando subas/elijas assets de audio del Marketplace, pegás los IDs.
 
 ### ⏳ Pendiente (siguiente decisión cuando retomes)
-Las opciones reales para seguir:
-1. **Fase 13 · DataStore / persistencia** — wins, streak, leaderstats sidebar. Ganar empieza a importar. Es el "siguiente recomendado" del plan.
-2. **Fase 14 · Más eventos** — `reverseControls`, `lavaPits`, `speedBoost`, `shrinkingChairs`, `teleportSit`, `darknessAndSpotlight`. Cada uno ~30 líneas en `Events.luau` siguiendo el patrón existente.
-3. **Pulir lo existente** — animaciones más vistosas del winner, anuncio de qué hace cada evento al empezar, ajustes finos visuales.
+1. **Fase 13 · DataStore / persistencia** — wins, streak, leaderstats sidebar. Ganar empieza a importar.
+2. **Fase 14 · Más eventos** — `reverseControls`, `lavaPits`, `speedBoost`, `shrinkingChairs`, etc. Cada uno ~30 líneas en `Events.luau`.
+3. **Pulir lo existente** — animaciones del winner, anuncio del evento al empezar, ajustes finos visuales.
 
-Las fases 15 (monetización), 16 (multi-place), 17 (accesibilidad) son más a futuro — solo cuando haya retención real de jugadores.
+Las fases 15 (monetización), 16 (multi-place), 17 (accesibilidad) son más a futuro — sólo cuando haya retención real.
 
 ### Cómo retomar en una PC nueva (checklist)
-1. Clonar el repo + `cd` adentro.
+1. `git clone` del repo + `cd` adentro. Como el `.rbxl` está versionado, viene todo incluido — no hay que conseguir assets aparte.
 2. `rokit install` (instala Rojo, StyLua, Selene desde `rokit.toml`).
-3. `rojo serve` desde la raíz (deja la terminal abierta).
-4. Abrir Studio, instalar/abrir el plugin de Rojo, **Connect** a `localhost:34872`.
-5. Verificar que el árbol aparezca con `Workspace.Lobby.Decor` (vienen muebles del `.rbxm`).
-6. **F5** (Play) para probar.
-7. Para hacer cambios: mirá la tabla "Loop diario con Rojo" en el Quick start arriba.
+3. `rojo serve` desde la raíz (dejá la terminal abierta).
+4. En Studio, instalar/abrir el plugin de Rojo, abrir `infernal-chairs.rbxl` (doble-click).
+5. En el plugin Rojo de Studio → **Connect** a `localhost:34872`.
+6. Verificar el árbol: `Workspace.Lobby.Decor` con tus muebles, `Workspace.Arena.Shell` con paredes, `ReplicatedStorage.Templates` con Chair y DiscoBall.
+7. **F5** (Play) para probar.
+8. Para hacer cambios: mirá la tabla "Loop diario con Rojo" en el Quick start arriba.

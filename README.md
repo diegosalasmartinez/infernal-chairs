@@ -1,8 +1,8 @@
 # Infernal Chairs
 
-Juego de **sillas musicales** en Roblox, con un giro: los jugadores no controlan su movimiento mientras suena la música — orbitan automáticamente alrededor de las sillas. Cuando para la música, recuperan el control y corren a sentarse. Quien no alcanza silla queda eliminado.
+Juego de **sillas musicales** en Roblox, con un giro: los jugadores no controlan su movimiento mientras suena la música — orbitan automáticamente alrededor de las sillas. Cuando para la música, recuperan el control y corren a sentarse. Quien no alcanza silla queda eliminado. Cada ronda 2+ tiene un **evento** que modifica las reglas (hielo, lodo, niebla, luces intermitentes).
 
-> Estado actual: MVP jugable con eliminación, sillas aleatorias, y UI mínima. La mecánica de rotación forzada todavía no está implementada (siguiente paso). Ver [DEV_PLAN.md](DEV_PLAN.md) para roadmap completo.
+> Estado actual: jugable end-to-end. Core completo (state machine, sit lock, orbit, spectator, eliminación, 4 eventos), lobby con muebles, arena parametrizado, UI completa. Próximos pasos: persistencia (DataStore) y más eventos. Ver [DEV_PLAN.md](DEV_PLAN.md) para roadmap completo y [ROBLOX_PLAYBOOK.md](ROBLOX_PLAYBOOK.md) para lecciones reutilizables.
 
 ## Stack
 
@@ -68,11 +68,15 @@ rojo plugin install
 
 Esto copia el plugin a la carpeta de plugins de Studio (`%LOCALAPPDATA%\Roblox\Plugins\` en Windows).
 
-### 5. Crear el archivo de Studio
+### 5. Abrir el archivo de Studio
 
-Abre Studio, **File → New** (te abre un Baseplate vacío). Guárdalo como `infernal-chairs.rbxl` dentro de la carpeta del proyecto.
+`infernal-chairs.rbxl` **viene en el repo** (versionado en git). Lo abrís con doble-click o
+desde Studio: **File → Open**.
 
-> Este archivo `.rbxl` está en `.gitignore` — cada dev tiene el suyo. La fuente de verdad es `default.project.json` + el código en `src/`.
+> El `.rbxl` se versiona porque contiene los Marketplace assets (Templates + lobby decor)
+> con propiedades binarias que Rojo no roundtripea bien. Ver [ROBLOX_PLAYBOOK.md](ROBLOX_PLAYBOOK.md)
+> sección 4 y `.gitignore` para la razón completa. **Fuente de verdad**: `default.project.json`
+> + código en `src/` + `infernal-chairs.rbxl` para los assets visuales.
 
 ### 6. Arrancar el sync
 
@@ -81,51 +85,61 @@ En terminal:
 rojo serve
 ```
 
-En Studio, abre la pestaña **Rojo** del toolbar → **Connect** (deja `localhost:34872`). Acepta el prompt de permisos.
+En Studio, plugin de Rojo en el toolbar → **Connect** (deja `localhost:34872`). Acepta el
+prompt de permisos.
 
-Listo. Ahora cualquier cambio en `src/**/*.luau` o `default.project.json` se refleja en Studio en vivo.
+Listo. Cambios en `src/**/*.luau` → se sincronizan en vivo (re-Play para verlos en runtime).
+Cambios en `default.project.json` → reiniciar `rojo serve` + Disconnect/Connect.
 
 ## Cómo correr el juego (testing)
 
-Como mínimo requiere 2 jugadores (`MIN_PLAYERS = 2` en `src/server/Config.luau`). Para probar tú solo:
+Como mínimo requiere `MIN_PLAYERS` jugadores (definido en `src/server/Config.luau`, por
+default 3). Para probar vos solo:
 
-1. En Studio, ve a pestaña **Test**
-2. Modo **Start** → cambia `Players` a `2` (o más)
-3. Click **Start**
-
-Studio abre una ventana "server" + una ventana cliente por cada jugador simulado. Puedes Alt+Tab y mover cada uno.
-
-Para detener: cualquier ventana → **Stop**.
+1. En Studio, pestaña **Test**.
+2. Modo **Start** → cambiá `Players` a 3+.
+3. Click **Start**. Se abre una ventana de server + una por cada cliente simulado.
+4. Alt+Tab entre ventanas para mover cada player.
+5. Para detener: en cualquier ventana → **Stop**.
 
 ## Estructura del proyecto
 
 ```
 infernal-chairs/
-├── rokit.toml                  # versiones de herramientas
-├── default.project.json        # mapa: carpeta → jerarquía Roblox (declara mundo + objetos)
+├── rokit.toml                  # versiones de herramientas (Rojo/StyLua/Selene)
+├── default.project.json        # mapa: filesystem + .rbxl → jerarquía Roblox
+├── infernal-chairs.rbxl        # VERSIONADO: Marketplace assets + lobby decor + spawns
 ├── README.md                   # este archivo
-├── DEV_PLAN.md                 # roadmap detallado por fases
-├── .gitignore
-├── assets/
-│   └── chair.rbxm              # modelo de silla del Marketplace (bundled, sin HTTP runtime)
+├── DEV_PLAN.md                 # roadmap por fases + estado actual + decisiones
+├── ROBLOX_PLAYBOOK.md          # lecciones reutilizables para futuros proyectos
+├── .gitignore                  # *.rbxm/*.rbxmx ignored; *.rbxl SÍ versionado
 └── src/
     ├── server/
-    │   ├── init.server.luau    # GameLoop server (state machine completo + eventos)
-    │   └── Config.luau         # todas las constantes tunables (cadencia, geometría, eventos)
+    │   ├── init.server.luau    # game loop (state machine + sit + orbit + spectator)
+    │   ├── Config.luau         # constantes tunables (cadencia, geometría, eventos)
+    │   ├── Events.luau         # eventos de ronda (ice/mud/fog/flickering)
+    │   ├── World.luau          # arena shell parametrizado + signs (SurfaceGui) + anchor pass del lobby decor
+    │   └── Decor.luau          # slot del arena (DiscoBall) con pivot compensation
     ├── client/
-    │   └── init.client.luau    # UI + audio playback (LocalScript per-cliente)
+    │   ├── init.client.luau    # bridges RemoteEvents → audio, SFX, fog particles
+    │   └── Hud.luau            # toda la UI (banner, countdown, eliminated overlay, welcome)
     └── shared/
         └── Hello.luau          # placeholder (sin uso por ahora)
 ```
 
+**Notar**: no hay carpeta `assets/`. Todo lo que sería asset del Marketplace vive dentro del
+`.rbxl` (ver [ROBLOX_PLAYBOOK.md](ROBLOX_PLAYBOOK.md) §4 para la decisión).
+
 ### Cómo se traduce a Roblox
 
-| Carpeta / archivo | Jerarquía en Roblox |
+| Origen | Jerarquía en Roblox |
 |---|---|
 | `src/server/` | `ServerScriptService.Server` |
 | `src/client/` | `StarterPlayer.StarterPlayerScripts.Client` |
 | `src/shared/` | `ReplicatedStorage.Shared` |
-| `default.project.json` define | `Workspace.Baseplate`, `Workspace.Chairs`, `Workspace.SpawnPads`, `ReplicatedStorage.Events`, `SoundService.Music` |
+| `default.project.json` declara | `Workspace.Baseplate`, `Workspace.Lobby.{Shell,Lights,Signs,SpawnPads,Decor}`, `Workspace.Arena` + `Workspace.Chairs` (vacíos, los llena el código), `ReplicatedStorage.{Events,Templates}`, `SoundService.Music`, configs de `Lighting`/`HttpService` |
+| `.rbxl` aporta (vía `$ignoreUnknownInstances` en JSON) | Templates clonables (`Chair`, `DiscoBall`), muebles del lobby (`Workspace.Lobby.Decor`), SpawnLocations, Floor/Ceiling y MatchStatusSign del lobby |
+| Código genera al startup | `Workspace.Arena.Shell.*` (Track, Walls, Pillars, NeonRing, CenterLight), `Workspace.Arena.Decor.DiscoBall`, `Workspace.Chairs.Chair1..N`, SurfaceGuis de los signs |
 
 ## Arquitectura
 
@@ -142,27 +156,27 @@ Server y cliente están aislados (no comparten memoria). Se hablan vía **Remote
 
 ### Decisiones de diseño
 
-- **Server NUNCA confía en el cliente**: `Seat.Occupant` se lee del lado server. No hay manera de que un cliente "se siente" sin que el server lo valide.
-- **Server NO reproduce audio**: solo dispara RemoteEvents; cada cliente toca/para su instancia local del `Sound`. Esto da control de volumen por jugador.
-- **`ScreenGui.ResetOnSpawn = false`**: la UI sobrevive cuando el personaje muere (sin esto se borraría al respawn).
-- **Sillas declaradas en `default.project.json`** (no creadas en runtime): nacen ocultas (`Transparency=1, CanCollide=false, Disabled=true`) y el server las posiciona + muestra cada ronda. Esto evita el "flash" de verlas en posición default antes de moverlas.
-- **8 SpawnLocations en círculo de radio 25** (perímetro), sillas en cluster central (radio 0-10). Da la forma circular del juego.
+- **Server NUNCA confía en el cliente**. `Seat.Occupant` se lee del lado server. No hay manera de que un cliente "se siente" sin que el server lo valide.
+- **Server NO reproduce audio**. Sólo dispara RemoteEvents; cada cliente toca/para su instancia local del `Sound`. Esto da control de volumen por jugador.
+- **`ScreenGui.ResetOnSpawn = false`**. La UI sobrevive cuando el personaje muere (sin esto se borraría al respawn).
+- **Sillas clonadas en runtime desde `ReplicatedStorage.Templates.Chair`**. El game loop las posiciona + muestra cada ronda. Se ocultan inmediatamente al spawnear (`hideAllChairs()` post-clone) para que no "flasheen" en la posición default del template.
+- **Templates de assets viven en el `.rbxl`**, no en `.rbxm`. Porque Rojo no roundtripea bien propiedades binarias del engine (PBR, MaterialVariant, CSG). Detalle completo en [ROBLOX_PLAYBOOK.md](ROBLOX_PLAYBOOK.md) §3 y §4.
 
 ### State machine del GameLoop
 
 ```
-Waiting → Intermission → Playing → Stopped → Eliminate
-   ↑                                              │
-   │                                              ▼
-   └──── Reset ←── Winner ←── (1 player left)  Next round
+Waiting → Warmup → Intermission → Playing → Stopped → Judgement → Eliminate
+   ↑                                                                 │
+   │                                                                 ▼
+   └────────── Reset ←── Winner ←── (1 player left) ──── Next round
 ```
 
 Vive en [src/server/init.server.luau](src/server/init.server.luau). Cada fase loguea con `[GameLoop:Phase]` y broadcasta el estado a la UI vía `StateChanged`.
 
 ## Hacia dónde vamos
 
-Resumen muy corto. Detalle completo en [DEV_PLAN.md](DEV_PLAN.md).
+Detalle completo en [DEV_PLAN.md](DEV_PLAN.md). Resumen:
 
-- **Próximo paso**: rotación forzada — los jugadores orbitan automáticamente alrededor de las sillas mientras suena la música, recuperan control al parar, y quedan bloqueados al sentarse (no se pueden parar).
-- **Después**: polish (SFX de stop, celebración del ganador, lobby loop entre matches).
-- **Eventual**: visuales (sillas que parezcan sillas, modelo de mapa elaborado), persistencia de stats, matchmaking.
+- **Fase 13 (siguiente)**: persistencia con DataStore — wins, streak, leaderstats sidebar para que ganar importe.
+- **Fase 14**: más eventos (reverseControls, lavaPits, speedBoost, shrinkingChairs, etc.).
+- **Fase 15+**: monetización (GamePasses, DevProducts, VIP servers), multi-place, accesibilidad.
