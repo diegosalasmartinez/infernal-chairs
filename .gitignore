@@ -1,12 +1,19 @@
-# Roblox place / model files (regenerated from default.project.json)
+# Roblox place files (build output of `rojo build`)
 *.rbxl
 *.rbxlx
-*.rbxm
-*.rbxmx
 
 # Studio lock files
 *.rbxl.lock
 *.rbxlx.lock
+
+# Ignore .rbxm/.rbxmx everywhere by default (build artifacts, Studio backups,
+# stray exports), but KEEP the source assets in assets/ — those are bundled
+# Marketplace models referenced by default.project.json via $path. Without
+# them the repo can't build on another machine.
+*.rbxm
+*.rbxmx
+!assets/*.rbxm
+!assets/*.rbxmx
 
 # Rojo build artifacts
 sourcemap.json
